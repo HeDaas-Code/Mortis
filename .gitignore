@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.pytest_cache/
+cover/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Mortis 工作产物
+# seed.md 模板的本地副本（主人格必含字段参考）
+.mortis-cache/
+
+# CodeGraph SQLite 索引（不在仓库内共享；每个开发者本地 init）
+.codegraph/
+
+# Hermes vault（不在仓库内共享；owner 委托维护，勿 commit）
+工作Wiki/
+
+# Obsidian 本地配置（如 vault 适配时涉及）
+.obsidian/
