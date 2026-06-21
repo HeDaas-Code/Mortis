@@ -1,37 +1,40 @@
-"""Test minimax provider — v1-issue-2 LLM 接入。"""
+"""Test LLM providers — mock / minimax。"""
 from __future__ import annotations
 
 from unittest.mock import patch
 
 import pytest
 
-from mortis.providers import (
-    MINIMAX_DEFAULT_BASE_URL,
-    MINIMAX_DEFAULT_MODEL,
+from mortis.provider import (
     MinimaxAPIError,
     MinimaxAuthError,
     MinimaxProvider,
+    MockProvider,
     make_provider,
+    Message,
 )
+from mortis.provider.minimax import MINIMAX_DEFAULT_BASE_URL, MINIMAX_DEFAULT_MODEL
+
+
+def _user_msg(content: str) -> list[Message]:
+    return [Message(role="user", content=content)]
 
 
 # ----- 工厂函数 -----
 
 def test_make_provider_mock() -> None:
     p = make_provider("mock")
-    assert isinstance(p, type(p))  # 真实类型不重要
+    assert isinstance(p, type(p))
 
 
 def test_make_provider_minimax_raises_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
     with pytest.raises(MinimaxAuthError):
-        MinimaxProvider().generate("test")
+        MinimaxProvider().generate(_user_msg("test"))
 
 
 def test_make_provider_auto_falls_back_to_mock(monkeypatch: pytest.MonkeyPatch) -> None:
-    """无 MINIMAX_API_KEY → auto 用 mock。"""
     monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
-    from mortis.persona import MockProvider
     p = make_provider("auto")
     assert isinstance(p, MockProvider)
 
@@ -45,6 +48,33 @@ def test_make_provider_auto_uses_minimax(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_make_provider_unknown_kind() -> None:
     with pytest.raises(ValueError):
         make_provider("bogus")
+
+
+# ----- MockProvider -----
+
+def test_mock_provider_returns_deterministic() -> None:
+    p = MockProvider()
+    a = p.generate(_user_msg("hello world"))
+    b = p.generate(_user_msg("hello world"))
+    assert a.content == b.content
+
+
+def test_mock_provider_uses_first_line() -> None:
+    p = MockProvider()
+    out = p.generate(_user_msg("line one\nline two"))
+    assert "line one" in out.content
+
+
+def test_mock_provider_empty() -> None:
+    p = MockProvider()
+    out = p.generate(_user_msg(""))
+    assert "[mock:" in out.content
+
+
+def test_mock_provider_generate_text() -> None:
+    p = MockProvider()
+    out = p.generate_text("hello")
+    assert "[mock:" in out
 
 
 # ----- MinimaxProvider 配置 -----
@@ -70,10 +100,9 @@ def test_minimax_provider_reads_env_var(monkeypatch: pytest.MonkeyPatch) -> None
     assert p._api_key == "env-key"
 
 
-# ----- MinimaxProvider.generate (HTTP 调用测试)-----
+# ----- MinimaxProvider.generate (HTTP 调用测试) -----
 
 def _mock_urlopen_ok(content: str):
-    """构造一个 mock urlopen 返回 OK payload。"""
     import json
     from unittest.mock import MagicMock
 
@@ -88,12 +117,11 @@ def _mock_urlopen_ok(content: str):
 def test_minimax_provider_generate_success() -> None:
     p = MinimaxProvider(api_key="k")
     with patch("urllib.request.urlopen", return_value=_mock_urlopen_ok("hello back")):
-        result = p.generate("test prompt")
-    assert result == "hello back"
+        result = p.generate(_user_msg("test prompt"))
+    assert result.content == "hello back"
 
 
 def test_minimax_provider_generate_with_system() -> None:
-    """system prompt 必须传进 messages。"""
     import json
     from unittest.mock import MagicMock
 
@@ -110,33 +138,36 @@ def test_minimax_provider_generate_with_system() -> None:
         m.__enter__.return_value.read.return_value = payload
         return m
 
+    msgs = [
+        Message(role="system", content="sys msg"),
+        Message(role="user", content="user msg"),
+    ]
     with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-        p.generate("user msg", system="sys msg")
-    msgs = captured["messages"]
-    assert msgs[0]["role"] == "system"
-    assert msgs[0]["content"] == "sys msg"
-    assert msgs[1]["role"] == "user"
-    assert msgs[1]["content"] == "user msg"
+        p.generate(msgs)
+    msgs_sent = captured["messages"]
+    assert msgs_sent[0]["role"] == "system"
+    assert msgs_sent[0]["content"] == "sys msg"
+    assert msgs_sent[1]["role"] == "user"
+    assert msgs_sent[1]["content"] == "user msg"
 
 
 def _http_error(code: int, msg: str):
     from urllib.error import HTTPError
-    from email.message import Message
-    return HTTPError("http://x", code, msg, Message(), None)
+    return HTTPError("http://x", code, msg, {}, None)
 
 
 def test_minimax_provider_401_raises_auth_error() -> None:
     p = MinimaxProvider(api_key="bad")
     with patch("urllib.request.urlopen", side_effect=_http_error(401, "Unauthorized")):
         with pytest.raises(MinimaxAuthError):
-            p.generate("x")
+            p.generate(_user_msg("x"))
 
 
 def test_minimax_provider_500_raises_api_error() -> None:
     p = MinimaxProvider(api_key="k")
     with patch("urllib.request.urlopen", side_effect=_http_error(500, "Internal Server Error")):
         with pytest.raises(MinimaxAPIError):
-            p.generate("x")
+            p.generate(_user_msg("x"))
 
 
 def test_minimax_provider_network_error() -> None:
@@ -145,11 +176,10 @@ def test_minimax_provider_network_error() -> None:
     p = MinimaxProvider(api_key="k")
     with patch("urllib.request.urlopen", side_effect=URLError("net down")):
         with pytest.raises(MinimaxAPIError):
-            p.generate("x")
+            p.generate(_user_msg("x"))
 
 
 def test_minimax_provider_malformed_response() -> None:
-    """响应缺 choices → APIError。"""
     import json
     from unittest.mock import MagicMock
 
@@ -158,11 +188,10 @@ def test_minimax_provider_malformed_response() -> None:
     mock.__enter__.return_value.read.return_value = json.dumps({"weird": 1}).encode("utf-8")
     with patch("urllib.request.urlopen", return_value=mock):
         with pytest.raises(MinimaxAPIError):
-            p.generate("x")
+            p.generate(_user_msg("x"))
 
 
 def test_minimax_provider_no_key_raises() -> None:
-    """没 key 立刻报错,不打网络。"""
     p = MinimaxProvider(api_key="")
     with pytest.raises(MinimaxAuthError):
-        p.generate("x")
+        p.generate(_user_msg("x"))

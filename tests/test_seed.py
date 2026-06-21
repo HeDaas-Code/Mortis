@@ -8,10 +8,10 @@ import pytest
 from mortis.seed import (
     SEVEN_DIMENSIONS,
     Seed,
-    _parse_markdown,
     load_seed,
     save_seed,
 )
+from mortis.seed.loader import _parse_markdown
 
 
 # ----- 契约测试 -----
