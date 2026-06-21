@@ -67,8 +67,12 @@ logs/
 .codegraph/
 
 # Mortis 运行时 vault（session、thread、sub-outputs；owner 本地维护）
-vault/
-mortis-journal/
+/vault/
+/mortis-journal/
+
+# 排除 mortis 包内的 vault/ 子包代码（gitignore 的 vault/ 会误伤 mortis/vault/）
+!mortis/vault/
+!mortis/vault/**/
 
 # Hermes vault（不在仓库内共享；owner 委托维护，勿 commit）
 工作Wiki/
