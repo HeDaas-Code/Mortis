@@ -70,22 +70,39 @@ class VaultSecurity:
     """vault 安全层 — 白名单检查、权限边界。"""
 
     @staticmethod
+    def _normalize(rel_path: str) -> str:
+        """归一化相对路径，消除 .. 和 . 。
+
+        PurePosixPath 不消除 ..，需手动处理。
+        用栈方式：遇到 . 跳过，遇到 .. 弹栈，其余入栈。
+        """
+        clean = rel_path.lstrip("/")
+        parts: list[str] = []
+        for segment in clean.split("/"):
+            if segment == "" or segment == ".":
+                continue
+            if segment == "..":
+                if parts:  # 弹掉上一级
+                    parts.pop()
+                # 如果栈空了，.. 被丢弃（不允许逃出根）
+                continue
+            parts.append(segment)
+        return "/".join(parts)
+
+    @staticmethod
     def check_whitelist(rel_path: str, whitelist: tuple[str, ...]) -> bool:
         """检查路径是否在白名单内。
 
+        先归一化路径（消除 ../ 和 ./），再做前缀匹配。
         支持两种 pattern 形式：
-        - 以 '/' 结尾：前缀匹配（目录白名单），如 "mortis-journal/sub-outputs/"
-        - 不以 '/' 结尾：精确匹配或前缀匹配（如 "mortis-private" 匹配 "mortis-private/x.md"）
+        - 以 '/' 结尾：目录白名单，如 "mortis-journal/sub-outputs/"
+        - 不以 '/' 结尾：精确匹配或目录前缀匹配
         """
+        normalized = VaultSecurity._normalize(rel_path)
         for pattern in whitelist:
-            if pattern.endswith("/"):
-                # 目录白名单：rel_path 在该目录下即匹配
-                if rel_path.startswith(pattern):
-                    return True
-            else:
-                # 精确或前缀匹配
-                if rel_path == pattern or rel_path.startswith(pattern):
-                    return True
+            np = VaultSecurity._normalize(pattern.rstrip("/"))
+            if normalized == np or normalized.startswith(np + "/"):
+                return True
         return False
 
     @staticmethod
