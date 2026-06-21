@@ -195,7 +195,8 @@ class PipelineExecutor:
         )
         self._log(f"review decision: {review_result.decision.value} — {review_result.reason}")
 
-        # 6. 执行审阅决定
+        # 6. 执行审阅决定（issue #17：传 SUB_VAULT_WHITELIST 强制边界，
+        #    防止 target_rel 指向白名单外写出私人笔记）
         target_rel = ReviewGate.apply(
             vault_entry_content=act_out.message,
             rel_path=sub_output_rel,
@@ -203,6 +204,7 @@ class PipelineExecutor:
             vault_write_fn=lambda rel, content: self.ctx.vault.write(rel, content),
             vault_read_fn=lambda rel: self.ctx.vault.read(rel).content,
             vault_discard_fn=lambda rel: self.ctx.vault.discard_sub_output(rel),
+            vault_whitelist=SUB_VAULT_WHITELIST,
         )
 
         # 7. 记录审阅步骤
