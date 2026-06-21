@@ -121,7 +121,17 @@ class PipelineExecutor:
         thread: Thread,
         step_outputs: list[dict],
     ) -> PipelineResult:
-        """运行委派路径：主人格派 sub，sub 执行任务，主人格审阅。"""
+        """运行委派路径：主人格派 sub，sub 执行任务，主人格审阅。
+
+        审阅链路（issue #7 修复）：
+        1. sub 产出写入 vault sub-outputs/
+        2. ReviewGate.review() 自动审阅
+        3. ReviewGate.apply() 执行决定（adopt/discard/merge/edit）
+        4. 只有 ADOPT/MERGE/EDIT 才写入正式 vault
+        """
+        from mortis.vault import ReviewDecision, ReviewGate
+        from mortis.runtime import SUB_VAULT_WHITELIST
+
         sub_id = f"sub-{uuid.uuid4().hex[:8]}"
         self._log(f"delegating to sub: {sub_id}")
 
@@ -144,14 +154,11 @@ class PipelineExecutor:
             tool_calls=[],
         ))
 
-        # 2. 生成 sub template（L1）
-        from mortis.runtime import SUB_VAULT_WHITELIST
-        sub_template = SubTemplate(
+        # 2. 生成 sub template（L1）— 用 from_seed 自动注入 parent_seed_hash
+        sub_template = SubTemplate.from_seed(
             sub_id=sub_id,
             task=thread.task,
-            voice=self.ctx.seed.tone,
-            agency_scope=f"完成以下任务：{thread.task}",
-            vault_whitelist=SUB_VAULT_WHITELIST,
+            seed=self.ctx.seed,
         )
         sub_runtime = SubRuntime(template=sub_template, ctx=self.ctx)
 
@@ -174,35 +181,59 @@ class PipelineExecutor:
             tool_calls=act_out.tool_results,
         ))
 
-        # 4. 主人格审阅
+        sub_runtime.complete(act_out.message)
+
+        # 4. sub 产出写入 sub-outputs（pending_review）
+        sub_output_rel = self.ctx.vault.write_sub_output(sub_id, act_out.message)
+        self._log(f"sub output written to: {sub_output_rel}")
+
+        # 5. ReviewGate 审阅（issue #7 核心）
+        sub_entry = self.ctx.vault.read(sub_output_rel)
+        review_result = ReviewGate.review(
+            content=sub_entry.content,
+            rel_path=sub_output_rel,
+        )
+        self._log(f"review decision: {review_result.decision.value} — {review_result.reason}")
+
+        # 6. 执行审阅决定
+        target_rel = ReviewGate.apply(
+            vault_entry_content=act_out.message,
+            rel_path=sub_output_rel,
+            result=review_result,
+            vault_write_fn=lambda rel, content: self.ctx.vault.write(rel, content),
+            vault_read_fn=lambda rel: self.ctx.vault.read(rel).content,
+            vault_discard_fn=lambda rel: self.ctx.vault.discard_sub_output(rel),
+        )
+
+        # 7. 记录审阅步骤
         review_id = f"step-review-{uuid.uuid4().hex[:4]}"
-        review_step = ReviewStep(review_id, self.ctx)
-        review_out = review_step.run()
+        review_message = f"ReviewGate: {review_result.decision.value} — {review_result.reason}"
+        if target_rel:
+            review_message += f" → 写入 {target_rel}"
         step_outputs.append({
             "step_id": review_id,
             "step_type": "review",
             "input": thread.task,
-            "output": review_out.message,
+            "output": review_message,
             "tool_calls": [],
         })
         thread.add_step(StepRecord(
             step_id=review_id,
             step_type="review",
             input=thread.task,
-            output=review_out.message,
+            output=review_message,
             tool_calls=[],
         ))
 
-        sub_runtime.complete(act_out.message)
-
-        # 5. 完成
-        thread.complete(act_out.message)
+        # 8. 完成
+        final_output = target_rel if target_rel else "(discarded by ReviewGate)"
+        thread.complete(final_output)
         self._save_thread(thread)
 
         return PipelineResult(
             thread_id=thread.thread_id,
             task=thread.task,
-            output=act_out.message,
+            output=final_output,
             steps=[s.__dict__ for s in thread.steps],
             delegated=True,
             sub_id=sub_id,
