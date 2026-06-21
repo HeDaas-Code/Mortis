@@ -28,10 +28,28 @@ class Vault:
     root: Path
 
     def __post_init__(self) -> None:
-        self.root = Path(self.root)
+        self.root = Path(self.root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         (self.root / "mortis-journal" / "sub-outputs").mkdir(parents=True, exist_ok=True)
         (self.root / "mortis-journal" / "notes").mkdir(parents=True, exist_ok=True)
+
+    def _safe_path(self, rel_path: str) -> Path:
+        """归一化路径并确保在 vault 根内。
+
+        防御：
+        - 拒绝绝对路径
+        - resolve 后检查是否在 root 内（消除 ../ 遍历）
+        """
+        if rel_path.startswith("/"):
+            raise VaultAccessDenied(f"absolute path not allowed: {rel_path}")
+        target = (self.root / rel_path).resolve()
+        try:
+            target.relative_to(self.root)
+        except ValueError:
+            raise VaultAccessDenied(
+                f"path traversal detected: {rel_path!r} escapes vault root"
+            )
+        return target
 
     def _enforce(self, rel_path: str, whitelist: tuple[str, ...] | None, op: str) -> None:
         """白名单强制检查（issue #6 落地）。
@@ -52,7 +70,7 @@ class Vault:
             whitelist: 可选白名单。传了则强制检查，不通过抛 VaultAccessDenied。
         """
         self._enforce(rel_path, whitelist, "read")
-        p = self.root / rel_path
+        p = self._safe_path(rel_path)
         if not p.exists():
             raise FileNotFoundError(f"vault entry not found: {rel_path}")
         stat = p.stat()
@@ -76,7 +94,7 @@ class Vault:
             whitelist: 可选白名单。传了则强制检查，不通过抛 VaultAccessDenied。
         """
         self._enforce(rel_path, whitelist, "write")
-        p = self.root / rel_path
+        p = self._safe_path(rel_path)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
         stat = p.stat()
@@ -93,7 +111,11 @@ class Vault:
         """
         if whitelist is not None and not VaultSecurity.check_whitelist(rel_path, whitelist):
             return False
-        return (self.root / rel_path).exists()
+        try:
+            p = self._safe_path(rel_path)
+        except VaultAccessDenied:
+            return False
+        return p.exists()
 
     def list_entries(
         self,
@@ -106,7 +128,7 @@ class Vault:
             rel_dir: 相对 vault 根的目录（默认根）。
             whitelist: 可选白名单。传了则只返回白名单内的路径。
         """
-        p = self.root / rel_dir
+        p = self._safe_path(rel_dir)
         if not p.exists():
             return []
         all_entries = sorted(
@@ -158,4 +180,6 @@ class Vault:
 
     def discard_sub_output(self, rel_path: str) -> None:
         """主人拒绝 sub 产出 — 删除文件。"""
-        (self.root / rel_path).unlink()
+        p = self._safe_path(rel_path)
+        if p.exists():
+            p.unlink()
