@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from mortis.vault.base import VaultSecurity
+from mortis.vault.local import VaultAccessDenied
+
 
 class ReviewDecision(str, Enum):
     """主人格对 sub 产出的审阅决定。"""
@@ -111,6 +114,7 @@ class ReviewGate:
         vault_write_fn,
         vault_read_fn,
         vault_discard_fn,
+        vault_whitelist=None,
     ) -> str:
         """执行审阅决定 — 将 ReviewResult 落地为 vault 操作。
 
@@ -121,8 +125,14 @@ class ReviewGate:
             vault_write_fn: callable(rel_path, content) -> str
             vault_read_fn: callable(rel_path) -> str
             vault_discard_fn: callable(rel_path) -> None
+            vault_whitelist: sub 可访问的 vault 目录白名单（issue #17 修复）。
+                传了则所有写操作都被强制白名单检查 — 即使 target_rel 指向白名单外
+                （如 owner_override 改路径）也无法写出。
 
         Returns: 最终写入的 target_rel（discard 返回空字符串）
+
+        Raises:
+            VaultAccessDenied: 当 target_rel 不在 vault_whitelist 内
         """
         decision = result.decision
 
@@ -139,9 +149,20 @@ class ReviewGate:
             vault_discard_fn(rel_path)
             return ""
 
+        # 内部：所有写操作先过白名单。target_rel 是 sub 提供的可能不可信
+        # （OWNER_OVERRIDE 路径里 owner 可以传任意 rel_path），
+        # 即使 vault_write_fn 本身不强制，这里也强制。
+        def _safe_write(target: str, content: str) -> None:
+            if vault_whitelist is not None:
+                if not VaultSecurity.check_whitelist(target, vault_whitelist):
+                    raise VaultAccessDenied(
+                        f"ReviewGate.apply: target '{target}' 不在白名单 {vault_whitelist}"
+                    )
+            vault_write_fn(target, content)
+
         if decision == ReviewDecision.ADOPT:
             target = result.target_rel or rel_path
-            vault_write_fn(target, vault_entry_content)
+            _safe_write(target, vault_entry_content)
             return target
 
         if decision == ReviewDecision.MERGE:
@@ -152,13 +173,13 @@ class ReviewGate:
                 merged = existing + "\n\n---\n\n" + vault_entry_content
             except FileNotFoundError:
                 merged = vault_entry_content
-            vault_write_fn(target, merged)
+            _safe_write(target, merged)
             return target
 
         if decision == ReviewDecision.EDIT:
             target = result.target_rel or rel_path
             content = result.edited_content or vault_entry_content
-            vault_write_fn(target, content)
+            _safe_write(target, content)
             return target
 
         return ""
