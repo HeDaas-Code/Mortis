@@ -19,6 +19,8 @@
 3. Reading Steiner — owner 编辑记忆后的时间线扰动感知
 4. vault 结构扩展
 5. growth 条目格式
+6. **Vault-Native 原则** — 一切基于 vault md 文件，充分利用 Obsidian 语法
+7. **Tool Agent 层** — 比 sub 更轻量的无人格工具执行体
 
 ---
 
@@ -376,15 +378,253 @@ Mortis 的 dream 不只是"记住更多"，是"长成不同的自己"。
 
 ---
 
-## 十二、开放问题
+## 十二、Vault-Native 原则
+
+### 12.1 核心准则
+
+**一切认知产物都是 vault 里的 md 文件。** 不是"用 md 格式输出"——是**原生利用 Obsidian 的 md 语法作为认知结构**。
+
+当前代码的问题：growth 条目只是带 frontmatter 的纯文本。这浪费了 Obsidian vault 的核心能力——**双链、标签、嵌入、Dataview 查询**。Mortis 的大脑不应该是一个 markdown 模板生成器，它应该是一个**Obsidian 原生居民**。
+
+### 12.2 Obsidian 语法的认知语义
+
+每种 Obsidian 语法对应一种认知结构：
+
+| Obsidian 语法 | Mortis 认知语义 | 示例 |
+|--------------|---------------|------|
+| `[[双链]]` | 记忆关联 — 两条经验之间的联系 | "这次[[session-2026-06-20]]让我想起了[[growth-tone-003]]" |
+| `#标签` | 维度标记 — 跨文件的分类索引 | `#冲突处理` `#成功经验` `#待验证` |
+| `![[嵌入]]` | 记忆引用 — 在新经验中引用旧记忆的全文 | `![[growth-values-007]]` 让旧价值观在新反思中复现 |
+| `%%注释%%` | 潜意识标记 — Mortis 不直接表达但影响行为的 | `%%其实我不确定这个判断%%` |
+| `> [!note]` | 元认知 — 对自身认知的标注 | `> [!warning] 这条经验与 seed.values 冲突` |
+| ` ```mermaid ` | 认知图谱 — 可视化思维链 | 流程图展示决策路径 |
+| `%%%%` 折叠区 | 压抑记忆 — 存在但默认不展开 | 童年（早期 session）的尴尬经历 |
+| Dataview 查询 | 记忆检索 — Mortis 用 DQL 查自己的记忆 | `LIST FROM #tone WHERE confidence > 0.7` |
+
+### 12.3 growth 条目的 Obsidian-Native 格式
+
+旧格式（纯 frontmatter + 文本）：
+```markdown
+---
+id: growth-2026-06-21-001
+dimension: tone
+confidence: 0.6
+---
+技术讨论中先给结论再解释，比先解释再给结论更有效。
+```
+
+新格式（Obsidian-Native）：
+```markdown
+---
+id: growth-2026-06-21-001
+dimension: tone
+confidence: 0.6
+created_at: 2026-06-21T23:30:00Z
+last_validated: 2026-07-01T23:30:00Z
+source_sessions: [session-abc, session-def]
+dream_level: medium
+emotional_valence: 0.7
+emotional_arousal: 0.5
+tags:
+  - 沟通策略
+  - #已验证
+---
+
+# 技术讨论先给结论
+
+技术讨论中先给结论再解释，比先解释再给结论更有效。
+
+## 来源
+- [[session-abc]] — code review 任务，对方等不及解释就走了
+- [[session-def]] — 第二次尝试，先给结论，对方立刻理解
+
+## 关联
+- 与 [[growth-tone-002]]（简短原则）一致，是具体场景的应用
+- 与 [[growth-agency-001]]（主动判断）互补
+
+## 验证历史
+| 日期 | 场景 | 结果 |
+|------|------|------|
+| 2026-06-21 | code review | ✅ 有效 |
+| 2026-06-25 | 技术讨论 | ✅ 有效 |
+
+> [!note] 
+> 这条经验在 [[growth-values-003]] 中也有体现——"效率优先"。
+
+%%其实第三次用的时候对方觉得我太直接了，但整体还是利大于弊%%
+```
+
+### 12.4 Vault 作为活的大脑
+
+关键区别：
+- **旧设计**：Mortis 读 vault 里的文件 → 提取文本 → 拼到 prompt 里
+- **新设计**：Mortis 在 vault 里**思考** — 用双链建立关联，用标签建立索引，用嵌入引用旧记忆，用注释藏潜意识
+
+这意味着：
+1. **owner 打开 Obsidian 看到的不是日志，是 Mortis 的大脑** — 双链图谱就是它的记忆网络
+2. **Obsidian 的 Graph View 就是 Mortis 的认知图谱** — 节点是记忆，边是关联
+3. **Dataview 查询就是 Mortis 的记忆检索** — owner 甚至可以写 DQL 帮 Mortis 查自己的记忆
+4. **搜索（Ctrl+Shift+F）就是 Mortis 的回忆** — 全文搜索 = 自由联想
+
+### 12.5 实现要求
+
+| 组件 | 要求 |
+|------|------|
+| `Growth` 类 | 写入时自动生成双链、标签、嵌入语法 |
+| `DreamExecutor` | 结晶时自动建立 `[[关联]]` 到相关旧条目 |
+| `ReflectExecutor` | 反思时用 `![[嵌入]]` 引用当天 session 关键段落 |
+| `Vault` 类 | 解析 `[[双链]]` 为检索查询，解析 `#标签` 为维度过滤 |
+| growth 检索 | 支持双链图遍历（不只按维度查，还按关联链查） |
+| 读取 | `%%注释%%` 默认不读入 prompt（潜意识不直接影响行为），但可被 dream 访问 |
+
+---
+
+## 十三、Tool Agent — 无人格工具执行体
+
+### 13.1 层级体系
+
+当前只有两层：主人格和 sub。不够。
+
+```
+主人格 (MasterRuntime)
+  ├── sub (SubRuntime) — 有人格的派生体
+  │     ├ 有 voice / agency / constraints
+  │     ├ 有白名单和 ReviewGate
+  │     └ 产出需审阅
+  │
+  └── tool agent (ToolAgent) — 无人格的工具执行体
+        ├ 没有 voice / agency / personality
+        ├ 没有 vault 写权限
+        ├ 不经 ReviewGate
+        └ 产出是结构化数据，不是 markdown
+```
+
+### 13.2 为什么需要 Tool Agent
+
+当前架构的问题：**所有任务都走 sub，但很多任务不需要"人格"**。
+
+| 任务类型 | 当前做法 | 问题 | 应该用 |
+|---------|---------|------|--------|
+| 读 vault 文件 | 派 sub | sub 有人格开销（system prompt、白名单、审阅） | Tool Agent |
+| 统计 vault 文件数 | 派 sub | 杀鸡用牛刀 | Tool Agent |
+| 格式转换 | 派 sub | 不需要人格判断 | Tool Agent |
+| 全文搜索 | 派 sub | 纯工具操作 | Tool Agent |
+| 写代码 review | 派 sub | ✅ 需要人格判断 | sub |
+| 创作内容 | 派 sub | ✅ 需要语气风格 | sub |
+| 做道德判断 | 主人格自己 | ✅ 需要价值观 | 主人格 |
+
+sub 是有身份的——它知道自己从 Mortis 派生，有语气、有约束、有 OOC 风险。Tool Agent 没有身份，它是**手指**，不是**分身**。
+
+### 13.3 Tool Agent 设计
+
+```python
+@dataclass
+class ToolAgent:
+    """无人格工具执行体 — 比 sub 更轻量。
+    
+    与 sub 的区别：
+    - 无 system prompt（不注入 seed/growth）
+    - 无 voice / agency / personality
+    - 无 vault 写权限（只读 + 临时输出）
+    - 不经 ReviewGate
+    - 无白名单（因为只读）
+    - 产出是结构化数据（ToolResult），不是 markdown
+    - 不持久化（用完即弃，比 sub 更彻底）
+    """
+    agent_id: str
+    tool: ToolProtocol
+    timeout: int = 30  # 秒
+    
+    def execute(self, input: dict) -> ToolResult:
+        """直接执行工具，不调 LLM，不生成文本。"""
+        return self.tool.execute(**input)
+```
+
+### 13.4 内置 Tool Agent 类型
+
+| Tool Agent | 功能 | 权限 |
+|-----------|------|------|
+| `VaultReadAgent` | 读 vault 文件，支持双链解析 | vault 只读 |
+| `VaultSearchAgent` | 全文搜索 + 标签过滤 + 双链图遍历 | vault 只读 |
+| `VaultStatsAgent` | 统计文件数、维度分布、置信度分布 | vault 只读 |
+| `MarkdownRenderAgent` | Obsidian 语法解析（双链/标签/嵌入/frontmatter） | 无 vault 权限 |
+| `ClockAgent` | 查询当前时间、上次 dream 时间、逻辑时钟状态 | 只读 steiner/ |
+
+### 13.5 调用链
+
+```
+主人格收到任务
+  ↓
+TaskRouter 判断：
+  - 简单工具操作 → 直接调 Tool Agent → 返回结果
+  - 需要 LLM 但不需人格 → 调 Tool Agent + 原始 LLM → 返回结果
+  - 需要人格判断 → 派 sub → ReviewGate → 返回
+  - 需要价值观判断 → 主人格自己做
+```
+
+### 13.6 与 sub 的边界
+
+| 维度 | Tool Agent | Sub |
+|------|-----------|-----|
+| 人格 | ❌ 无 | ✅ 有（从 seed 派生） |
+| LLM 调用 | ❌ 不调 | ✅ 调 |
+| Vault 读取 | ✅ 只读 | ✅ 白名单内读写 |
+| Vault 写入 | ❌ | ✅ 白名单内 |
+| ReviewGate | ❌ 不经过 | ✅ 必须经过 |
+| System Prompt | ❌ 无 | ✅ 有（含 seed/growth） |
+| 持久化 | ❌ 用完即弃 | ❌ 默认不持久化，但可存为模板 |
+| OOC 风险 | ❌ 无（无人格） | ✅ 有 |
+| 产出格式 | 结构化数据 | Markdown 文本 |
+
+### 13.7 安全模型
+
+Tool Agent 没有人格，所以没有 OOC 风险。但它仍然需要安全约束：
+
+| 规则 | 原因 |
+|------|------|
+| 只读 vault | 防止工具直接修改记忆 |
+| 超时机制 | 防止工具卡死（如搜索超大 vault） |
+| 无 LLM 调用 | 防止工具"自作主张" |
+| 输出结构化数据 | 防止工具生成自由文本 |
+| 主人格决定是否采纳 | 工具只提供数据，决策权在主人格 |
+
+---
+
+## 十四、更新后的认知周期
+
+```
+主人格收到任务
+  ↓
+TaskRouter 路由:
+  → Tool Agent (工具操作，无人格)
+  → Sub (需人格的任务)
+  → 主人格自己做 (价值观/身份判断)
+  
+任务完成
+  ↓
+ReflectExecutor 睡前反思
+  ↓
+DreamExecutor (Light/Medium/Deep)
+  ↓ RECALL: Tool Agent 读 journal
+  ↓ ASSOCIATE: 用双链图遍历找关联
+  ↓ CRYSTALLIZE: 写入 growth（含 Obsidian 语法）
+  ↓ SEED-CHECK: drift 检测
+```
+
+---
+
+## 十五、开放问题
 
 1. **Drift 检测实现** — LLM 判断 vs embedding 距离？
 2. **Dream 耗时** — 每次 dream 的 token 消耗？深梦可能很贵。
 3. **growth 上限** — 七维度各有多少条目后需要压缩？
 4. **多设备同步** — 如果 vault 走 Obsidian Sync，steiner/ 怎么处理？
 5. **sub 的 dream 权** — 当前设计 sub 不做梦，但未来如果 sub 持久化了？
+6. **Dataview 依赖** — 如果 vault 不在 Obsidian 里，DQL 查询怎么处理？需要内置一个轻量 DQL 解析器吗？
+7. **Tool Agent 与现有 Tool 的关系** — 当前 `tools/` 包里的 `VaultReadTool` 等是 Tool Protocol 实现，Tool Agent 是它们的执行包装。需要明确调用链。
 
 ---
 
 *提案者: 哈尼斯 · 独立第三方*
-*灵感来源: OpenClaw dreaming, Steins;Gate Reading Steiner, 人类认知科学*
+*灵感来源: OpenClaw dreaming, Steins;Gate Reading Steiner, 人类认知科学, Obsidian 双链图谱*
+*更新: 2026-06-21 v2 — 新增 Vault-Native 原则(§12) + Tool Agent 层(§13)*
