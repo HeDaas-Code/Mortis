@@ -1,11 +1,14 @@
-"""Mortis tools vault — vault 读写工具。"""
+"""Mortis tools vault — vault 读写工具。
+
+issue #6 落地：白名单强制检查下沉到 Vault 层后，这里只透传 whitelist 参数。
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 from .base import ToolProtocol, ToolResult
-from mortis.vault import Vault, VaultSecurity
+from mortis.vault import Vault, VaultAccessDenied
 
 
 @dataclass
@@ -27,10 +30,10 @@ class VaultReadTool:
 
     def execute(self, path: str, whitelist: tuple[str, ...] | None = None) -> ToolResult:
         try:
-            if whitelist and not VaultSecurity.check_whitelist(path, whitelist):
-                return ToolResult.err(self.name, VaultSecurity.deny_reason(path, whitelist))
-            entry = self.vault.read(path)
+            entry = self.vault.read(path, whitelist=whitelist)
             return ToolResult.ok(self.name, entry.content)
+        except VaultAccessDenied as e:
+            return ToolResult.err(self.name, str(e))
         except FileNotFoundError:
             return ToolResult.err(self.name, f"file not found in vault: {path!r}")
         except Exception as e:
@@ -56,9 +59,7 @@ class VaultListTool:
 
     def execute(self, dir: str = "", whitelist: tuple[str, ...] | None = None) -> ToolResult:
         try:
-            if whitelist and not VaultSecurity.check_whitelist(dir, whitelist):
-                return ToolResult.err(self.name, VaultSecurity.deny_reason(dir, whitelist))
-            entries = self.vault.list_entries(dir)
+            entries = self.vault.list_entries(dir, whitelist=whitelist)
             if not entries:
                 return ToolResult.ok(self.name, "(no files)")
             return ToolResult.ok(self.name, "\n".join(entries))
@@ -98,15 +99,17 @@ class VaultWriteTool:
         whitelist: tuple[str, ...] | None = None,
     ) -> ToolResult:
         try:
-            if whitelist and not VaultSecurity.check_whitelist(path, whitelist):
-                return ToolResult.err(self.name, VaultSecurity.deny_reason(path, whitelist))
             # sub 写文件走 sub-output 路径（待审阅）
             if sub_id:
+                # sub-output 路径本身在白名单内（mortis-journal/sub-outputs/），
+                # 不需要再次强制检查（check_whitelist 内部实现保证）。
                 rel = self.vault.write_sub_output(sub_id, content)
             else:
-                self.vault.write(path, content)
+                self.vault.write(path, content, whitelist=whitelist)
                 rel = path
             return ToolResult.ok(self.name, f"written to {rel}")
+        except VaultAccessDenied as e:
+            return ToolResult.err(self.name, str(e))
         except Exception as e:
             return ToolResult.err(self.name, str(e))
 
@@ -125,5 +128,5 @@ class VaultExistsTool:
         "required": ["path"],
     })
 
-    def execute(self, path: str) -> ToolResult:
-        return ToolResult.ok(self.name, "yes" if self.vault.exists(path) else "no")
+    def execute(self, path: str, whitelist: tuple[str, ...] | None = None) -> ToolResult:
+        return ToolResult.ok(self.name, "yes" if self.vault.exists(path, whitelist=whitelist) else "no")

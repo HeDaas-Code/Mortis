@@ -71,13 +71,21 @@ class VaultSecurity:
 
     @staticmethod
     def check_whitelist(rel_path: str, whitelist: tuple[str, ...]) -> bool:
-        """检查路径是否在白名单内。"""
+        """检查路径是否在白名单内。
+
+        支持两种 pattern 形式：
+        - 以 '/' 结尾：前缀匹配（目录白名单），如 "mortis-journal/sub-outputs/"
+        - 不以 '/' 结尾：精确匹配或前缀匹配（如 "mortis-private" 匹配 "mortis-private/x.md"）
+        """
         for pattern in whitelist:
             if pattern.endswith("/"):
-                if rel_path.startswith(pattern) or rel_path + "/" in pattern:
-                    continue
-            if rel_path == pattern or rel_path.startswith(pattern):
-                return True
+                # 目录白名单：rel_path 在该目录下即匹配
+                if rel_path.startswith(pattern):
+                    return True
+            else:
+                # 精确或前缀匹配
+                if rel_path == pattern or rel_path.startswith(pattern):
+                    return True
         return False
 
     @staticmethod
