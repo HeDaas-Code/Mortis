@@ -117,3 +117,102 @@ def test_discard_sub_output(v: Vault) -> None:
     rel = v.write_sub_output("sub-1", "x")
     v.discard_sub_output(rel)
     assert not v.exists(rel)
+
+
+# ----- issue #6: whitelist 强制下沉到 Vault 层 -----
+
+def test_write_without_whitelist_succeeds(v: Vault) -> None:
+    """不传 whitelist 保持向后兼容 — 任意路径都能写。"""
+    v.write("anywhere.md", "ok")
+    assert v.exists("anywhere.md")
+
+
+def test_write_with_whitelist_succeeds_when_in_list(v: Vault) -> None:
+    """传 whitelist 且路径在白名单内 — 通过。"""
+    wl = ("mortis-journal/sub-outputs/",)
+    v.write("mortis-journal/sub-outputs/sub-x.md", "ok", whitelist=wl)
+    assert v.exists("mortis-journal/sub-outputs/sub-x.md")
+
+
+def test_write_with_whitelist_denied_when_not_in_list(v: Vault) -> None:
+    """传 whitelist 且路径不在白名单内 — 抛 VaultAccessDenied。"""
+    from mortis.vault import VaultAccessDenied
+    wl = ("mortis-journal/sub-outputs/",)
+    with pytest.raises(VaultAccessDenied):
+        v.write("private/notes.md", "leak", whitelist=wl)
+
+
+def test_write_denied_does_not_create_file(v: Vault) -> None:
+    """被拒绝时不应写入文件（事务性）。"""
+    from mortis.vault import VaultAccessDenied
+    wl = ("mortis-journal/sub-outputs/",)
+    with pytest.raises(VaultAccessDenied):
+        v.write("private/notes.md", "leak", whitelist=wl)
+    assert not v.exists("private/notes.md")
+
+
+def test_read_with_whitelist_denied(v: Vault) -> None:
+    """read 也受 whitelist 强制。"""
+    from mortis.vault import VaultAccessDenied
+    v.write("private/notes.md", "secret")
+    wl = ("mortis-journal/sub-outputs/",)
+    with pytest.raises(VaultAccessDenied):
+        v.read("private/notes.md", whitelist=wl)
+
+
+def test_exists_with_whitelist_returns_false_when_denied(v: Vault) -> None:
+    """exists 是探测型 API，被拒绝时返回 False（不抛异常）。"""
+    v.write("private/notes.md", "secret")
+    wl = ("mortis-journal/sub-outputs/",)
+    assert v.exists("private/notes.md", whitelist=wl) is False
+    assert v.exists("private/notes.md") is True  # 不传 whitelist 仍返回真实状态
+
+
+def test_list_entries_with_whitelist_filters(v: Vault) -> None:
+    """list_entries 传 whitelist 时只返回白名单内的路径。"""
+    v.write("mortis-journal/sub-outputs/sub-1.md", "a")
+    v.write("mortis-journal/notes/note-1.md", "b")
+    v.write("private/secret.md", "c")
+    wl = ("mortis-journal/sub-outputs/",)
+    entries = v.list_entries("", whitelist=wl)
+    assert "mortis-journal/sub-outputs/sub-1.md" in entries
+    assert "mortis-journal/notes/note-1.md" not in entries
+    assert "private/secret.md" not in entries
+
+
+def test_sub_whitelist_blocks_sub_from_writing_private(v: Vault) -> None:
+    """模拟 sub 调 vault.write 写私人笔记 — 现在被强制拦截。"""
+    from mortis.vault import VaultAccessDenied
+    from mortis.runtime.sub import SUB_VAULT_WHITELIST
+    with pytest.raises(VaultAccessDenied):
+        v.write("private/diary.md", "leak", whitelist=SUB_VAULT_WHITELIST)
+
+
+def test_vault_access_denied_export() -> None:
+    """VaultAccessDenied 在公共 API 表面可访问。"""
+    from mortis.vault import VaultAccessDenied
+    assert VaultAccessDenied is not None
+
+
+# ----- check_whitelist 自身 bug 回归测试 -----
+
+def test_check_whitelist_dir_pattern_matches_nested() -> None:
+    """以 / 结尾的 pattern 应匹配子目录文件（修复前：continue 直接跳过，bug）。"""
+    from mortis.vault import VaultSecurity
+    wl = ("mortis-journal/sub-outputs/",)
+    assert VaultSecurity.check_whitelist("mortis-journal/sub-outputs/sub-1.md", wl) is True
+    assert VaultSecurity.check_whitelist("mortis-journal/sub-outputs/deep/nested.md", wl) is True
+
+
+def test_check_whitelist_dir_pattern_rejects_other() -> None:
+    """以 / 结尾的 pattern 不应匹配兄弟目录。"""
+    from mortis.vault import VaultSecurity
+    wl = ("mortis-journal/sub-outputs/",)
+    assert VaultSecurity.check_whitelist("mortis-journal/notes/x.md", wl) is False
+    assert VaultSecurity.check_whitelist("private/x.md", wl) is False
+
+
+def test_check_whitelist_empty() -> None:
+    """空白名单 = 拒绝所有。"""
+    from mortis.vault import VaultSecurity
+    assert VaultSecurity.check_whitelist("anything.md", ()) is False
