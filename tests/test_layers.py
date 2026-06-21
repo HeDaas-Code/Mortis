@@ -8,7 +8,7 @@ import pytest
 from mortis.seed import Seed, load_seed, save_seed
 from mortis.vault import Vault
 from mortis.provider import MockProvider
-from mortis.memory import Session, Thread
+from mortis.memory import Session, Thread, StepRecord
 from mortis.runtime import (
     MasterRuntime,
     SubRuntime,
@@ -141,6 +141,66 @@ def test_messages_for_provider_includes_tone(seed: Seed, vault: Vault, master: M
     assert len(msgs) >= 1
     assert msgs[0].role == "system"
     assert "short" in msgs[0].content  # tone from seed
+
+
+def test_messages_for_provider_reconstructs_thread_history(seed: Seed, vault: Vault, master: MasterRuntime) -> None:
+    """messages_for_provider 重建 Thread 步骤历史，使后续 LLM 调用有上下文。"""
+    thread = master.create_thread("build context")
+    thread.add_step(StepRecord(
+        step_id="step-think-1",
+        step_type="think",
+        input="build context",
+        output="first thought: check vault",
+    ))
+    thread.add_step(StepRecord(
+        step_id="step-plan-1",
+        step_type="plan",
+        input="build context",
+        output="step 1: read notes",
+    ))
+
+    ctx = master.make_context(thread)
+    msgs = ctx.messages_for_provider()
+
+    assert len(msgs) >= 3
+    # 第一个是 system（tone）
+    assert msgs[0].role == "system"
+    # 第二个是 think 输出（assistant）
+    assert msgs[1].role == "assistant"
+    assert "first thought" in msgs[1].content
+    # 第三个是 plan 输出（assistant）
+    assert msgs[2].role == "assistant"
+    assert "step 1" in msgs[2].content
+
+
+def test_messages_for_provider_empty_thread_only_tone(seed: Seed, vault: Vault, master: MasterRuntime) -> None:
+    """空 thread 返回唯一一条 system 消息。"""
+    thread = master.create_thread("fresh task")
+    ctx = master.make_context(thread)
+    msgs = ctx.messages_for_provider()
+    assert len(msgs) == 1
+    assert msgs[0].role == "system"
+
+
+def test_messages_for_provider_step_types_distinguish_roles(seed: Seed, vault: Vault, master: MasterRuntime) -> None:
+    """不同 step_type 都作为 assistant 角色重建，不混角色。"""
+    thread = master.create_thread("role test")
+    for i, step_type in enumerate(["think", "plan", "act", "review"]):
+        thread.add_step(StepRecord(
+            step_id=f"step-{step_type}-1",
+            step_type=step_type,
+            input="role test",
+            output=f"{step_type} output {i}",
+        ))
+
+    ctx = master.make_context(thread)
+    msgs = ctx.messages_for_provider()
+
+    # system + 4 steps = 5 messages minimum
+    assert len(msgs) == 5, f"expected 5 messages, got {len(msgs)}"
+    assert msgs[0].role == "system"
+    for i, msg in enumerate(msgs[1:], start=1):
+        assert msg.role == "assistant", f"msg[{i}] should be assistant, got {msg.role}"
 
 
 # ----- SubTemplate -----

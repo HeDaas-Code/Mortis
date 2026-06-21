@@ -27,9 +27,16 @@ class RuntimeContext:
         return str(self.vault.root)
 
     def messages_for_provider(self) -> list["Message"]:
-        """构建发给 provider 的消息列表。"""
+        """构建发给 provider 的消息列表。
+
+        重建完整对话历史：
+        - system: seed tone
+        - assistant: 每条 Thread step 的 output（按顺序）
+        """
         from mortis.provider import Message
         msgs: list[Message] = [
             Message(role="system", content=self.seed.get_dimension("tone")),
         ]
+        for step in self.thread.steps:
+            msgs.append(Message(role="assistant", content=step.output))
         return msgs
