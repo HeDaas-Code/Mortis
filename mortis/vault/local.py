@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from mortis.growth.frontmatter import FrontmatterError, parse_growth_file, serialize_growth_file
+from mortis.growth.frontmatter import FrontmatterError, parse_growth_file
 from mortis.growth.model import Dimension, Growth
 from mortis.growth.vault_layout import (
     DIMENSION_DIRS,
@@ -14,6 +14,12 @@ from mortis.growth.vault_layout import (
     GROWTH_WHITELIST,
     growth_rel,
 )
+from mortis.growth.writer import (
+    write_growth_obsidian,
+    extract_wikilinks_from_body,
+    extract_tags_inline_from_body,
+)
+from mortis.vault.obsidian import parse as parse_obsidian
 
 from .base import VaultEntry, VaultProtocol, VaultSecurity
 
@@ -208,13 +214,17 @@ class Vault:
         """把 Growth dataclass 写为 md 文件。
 
         路径由 vault_layout.growth_rel() 决定 — mortis-growth/<dim>/<id>.md。
+        **issue #19 行为变更**：使用 `write_growth_obsidian` 序列化为完整
+        Obsidian-Native 格式（H1 标题 / `## 来源` / `> [!note]` callout /
+        `%%潜意识%%` 段）。Obsidian-Native 字段（callout / subconscious）由
+        writer 根据 Growth 字段值自动生成对应段。
         复用 self.write(..., whitelist=GROWTH_WHITELIST) — 不重写安全检查。
         同 ID 重复写 → 覆盖（self.write 用 p.write_text 语义）。
         首次调用时 lazy 建子目录。
         """
         self._ensure_growth_layout()
         rel = growth_rel(growth.dimension, growth.id)
-        content = serialize_growth_file(growth)
+        content = write_growth_obsidian(growth)
         self.write(rel, content, whitelist=GROWTH_WHITELIST)
 
     def read_growth(self, rel_path: str) -> Growth:
@@ -222,9 +232,15 @@ class Vault:
 
         文件不存在 → FileNotFoundError（透传 self.read 的行为）。
         frontmatter 解析失败 → FrontmatterError（透传 parse_growth_file 的行为）。
+
+        **issue #19 行为变更**：反序列化后会用 Obsidian 解析层扫描 vault
+        原始文本（剥离前的完整 md），提取 wikilinks / tags_inline / callout /
+        subconscious 四个新字段并用 `dataclasses.replace` 回填到 Growth 实例。
+        旧字段（frontmatter 中没有的）保持空值 — round-trip 仍一致。
         """
         entry = self.read(rel_path, whitelist=GROWTH_WHITELIST)
-        return parse_growth_file(entry.content)
+        growth = parse_growth_file(entry.content)
+        return _enrich_growth_with_obsidian(growth, raw_text=entry.content)
 
     def list_growths(self, dimension: Dimension | None = None) -> list[str]:
         """列 mortis-growth/ 下所有 .md 相对路径。
@@ -274,3 +290,41 @@ class Vault:
             if g.confidence >= min_conf:
                 results.append(rel)
         return sorted(results)
+
+
+# ----- growth × Obsidian 集成辅助（issue #19）-----
+
+
+def _enrich_growth_with_obsidian(growth: Growth, raw_text: str) -> Growth:
+    """用 Obsidian 解析层扫描 vault 原始文本，提取 4 个新字段并 dataclasses.replace 回填。
+
+    行为：
+    - wikilinks: raw_text 中 `[[双链]]` 的 target 列表（去重保序）
+    - tags_inline: raw_text 中 `#tag` 列表（去重保序）
+    - callout: raw_text 中**第一个** callout 块的内容(去掉 `> [!kind]` 前缀)。
+                None 表示无 callout。
+    - subconscious: raw_text 中 `%%...%%` 注释 + 折叠块的内容（用 `\n\n` 连接）。
+                    None 表示无注释。
+    - body: **不修改** — body 字段已由 `parse_growth_file` 经过 Obsidian
+             剥离后回填（保留用户原始纯文本）。调用方按需从 `subconscious`
+             字段拿剥离后的内容。
+    """
+    parsed = parse_obsidian(raw_text)
+    wikilinks = extract_wikilinks_from_body(raw_text)
+    tags_inline = extract_tags_inline_from_body(raw_text)
+    callout: str | None = None
+    if parsed.callouts:
+        callout = parsed.callouts[0].body
+    subconscious: str | None = None
+    subconscious_parts: list[str] = list(parsed.comments)
+    for fold in parsed.foldable_sections:
+        subconscious_parts.append(fold.body)
+    if subconscious_parts:
+        subconscious = "\n\n".join(subconscious_parts)
+    return replace(
+        growth,
+        wikilinks=wikilinks,
+        tags_inline=tags_inline,
+        callout=callout,
+        subconscious=subconscious,
+    )
