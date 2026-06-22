@@ -48,7 +48,16 @@ class Growth:
     frozen: 不可变 — 任何更新走 dataclasses.replace() 返回新对象
     （RFC §八 "growth 可被推翻" = 用新对象替换，不改原对象）。
 
-    body: 纯文本。Obsidian 语法解析（双链/注释/折叠）是 #19 的事。
+    body: 经过 Obsidian 解析层剥离 `%%注释%%` 和 `%%折叠%%` 后的**纯文本**。
+        双链 `[[...]]`、标签 `#tag`、callout 块保留在 body 里(原样),
+        调用方按需从 Obsidian 解析层取结构化字段。
+    wikilinks: body 中所有 `[[双链]]` (按出现顺序,自动提取)。
+    tags_inline: body 中所有 `#tag` 标签(区别于 frontmatter.tags)。
+    callout: body 中第一个 callout (`> [!kind] body`) 的纯文本内容;
+        None 表示无 callout。`> [!kind]` 前缀已剥离。
+    subconscious: 所有 `%%...%%` 注释的累积文本(单行 + 折叠块都纳入,
+        用双换行分隔)。None 表示无注释。**默认不读入 prompt**。
+        反向 (写入) 时由 writer.py 负责生成对应的 `%%...%%` 块。
     """
 
     id: str
@@ -62,6 +71,11 @@ class Growth:
     emotional_arousal: float  # 0.0 ~ 1.0
     tags: tuple[str, ...]
     body: str
+    # --- Obsidian-Native 字段 (issue #19) ---
+    wikilinks: tuple[str, ...] = ()
+    tags_inline: tuple[str, ...] = ()
+    callout: str | None = None
+    subconscious: str | None = None
 
 
 def assert_dimension_consistency() -> None:
