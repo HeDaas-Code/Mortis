@@ -166,6 +166,20 @@ class TestDeepDreamer:
         assert reconcile is not None
         assert reconcile.detail["conflicts"] >= 1
 
+    def test_reconcile_checks_non_first_mutex_pair(self, vault_dir: Path) -> None:
+        """issue #36: 第二组 mutex pair 也应被检测到。"""
+        v = Vault(vault_dir)
+        # 用第三组 ("积极", "消极") — 修复前不会被检查
+        _write_growth(v, "hi2", "积极面对", confidence=0.8, dim=Dimension.TONE)
+        _write_growth(v, "lo2", "消极退缩", confidence=0.4, dim=Dimension.TONE)
+        provider = MockProvider(responses=[_all_zero_drift()])
+        dreamer = DeepDreamer(v, provider, _make_seed())
+        result = dreamer.run()
+
+        reconcile = result.trace_for("reconcile")
+        assert reconcile is not None
+        assert reconcile.detail["conflicts"] >= 1
+
     def test_run_level_deep(self, vault_dir: Path) -> None:
         v = Vault(vault_dir)
         provider = MockProvider(responses=[_all_zero_drift()])

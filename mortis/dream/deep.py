@@ -33,7 +33,7 @@ from mortis.dream.phases import DreamLevel, DreamPhase
 from mortis.dream.pipeline import DreamPipeline, DreamResult, PhaseTrace
 from mortis.dream.seed_check import seed_check, DriftReport
 from mortis.growth.model import Dimension, Growth
-from mortis.growth.vault_layout import growth_archive_rel, growth_rel
+from mortis.growth.vault_layout import growth_rel
 from mortis.provider.base import LLMProviderProtocol
 from mortis.seed import Seed
 from mortis.vault import Vault
@@ -207,8 +207,7 @@ class DeepDreamer(DreamPipeline):
                                 "low_id": lo.id,
                                 "reason": f"mutex ({a} vs {b})",
                             })
-                            break
-                    break  # 每个 lo 只报一次
+                            break  # 每个 lo 只报一次冲突
 
         self._conflicts = conflicts_found
         return PhaseTrace(
@@ -238,21 +237,12 @@ class DeepDreamer(DreamPipeline):
             except Exception as e:
                 _logger.warning("deep erode: write back %s failed: %s", g.id, e)
 
-        # 移到 archive/
+        # 移到 archive/ (用 vault.archive_growth 原子 rename, issue #39)
         archived: list[str] = []
         for g in to_archive:
             try:
-                # 写 archive 副本
-                archive_rel = growth_archive_rel(g.dimension, g.id)
-                from mortis.growth.writer import write_growth_obsidian
-                content = write_growth_obsidian(g)
-                self.vault.write(archive_rel, content, whitelist=None)
-                # 删除原文件 (走 _safe_path + unlink)
-                orig_rel = growth_rel(g.dimension, g.id)
-                orig_path = self.vault._safe_path(orig_rel)
-                if orig_path.exists():
-                    orig_path.unlink()
-                archived.append(g.id)
+                if self.vault.archive_growth(g.dimension, g.id):
+                    archived.append(g.id)
             except Exception as e:
                 _logger.warning("deep erode: archive %s failed: %s", g.id, e)
 
@@ -309,13 +299,14 @@ class DeepDreamer(DreamPipeline):
         # 如果需要通知 owner, 写标记文件
         if report.needs_owner_notify:
             try:
+                import json
                 rel = "mortis-subconscious/owner-notify.json"
-                content = (
-                    f'{{"needs_notify": true, '
-                    f'"drift_total": {report.total_drift}, '
-                    f'"threshold": {report.threshold}, '
-                    f'"reported_at": "{datetime.now(tz=timezone.utc).isoformat()}"}}'
-                )
+                content = json.dumps({
+                    "needs_notify": True,
+                    "drift_total": report.total_drift,
+                    "threshold": report.threshold,
+                    "reported_at": datetime.now(tz=timezone.utc).isoformat(),
+                }, ensure_ascii=False)
                 self.vault.write(rel, content, whitelist=None)
             except Exception as e:
                 _logger.warning("deep SEED_CHECK: notify write failed: %s", e)
