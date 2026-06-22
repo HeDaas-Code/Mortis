@@ -12,6 +12,15 @@ issue #18 决定 override PyYAML：
 - key:  (block list, 缩进 dash 开头)
 
 不支持：嵌套 dict / 多行 string / anchor / 复杂类型（用 PyYAML）。
+
+issue #19 增量：
+- `parse_growth_file` 在反序列化时把 Obsidian-Native 结构（H1 标题 /
+  `## 来源` 段 / `## 关联` 段 / `> [!note]` callout / `%%潜意识%%` 段）
+  从 body 字段里剥离,只保留**用户原始的纯文本 body**。Obsidian-Native
+  字段(wikilinks/tags_inline/callout/subconscious)由 vault 读写层
+  (`_enrich_growth_with_obsidian`) 根据 vault 原文再回填。
+- `serialize_growth_file` 保留旧行为（纯 frontmatter + body） — 给测试 /
+  老调用方用。新写入路径走 `mortis.growth.writer.write_growth_obsidian`。
 """
 
 from __future__ import annotations
@@ -28,6 +37,21 @@ class FrontmatterError(ValueError):
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", re.DOTALL)
 
+# 剥离规则（issue #19 round-trip）:
+# - 顶层 `# 标题` 行
+# - `## 来源` / `## 关联` 段（及其下属列表项）
+# - `## 验证历史` 段(issue #19 暂不实现写入,但解析时也剥离)
+# - `> [!kind] ...` callout 块
+# - `%%...%%` 块(单行 / 折叠)
+_H1_LINE = re.compile(r"^#\s+.+?\n", re.MULTILINE)
+_H2_SECTION = re.compile(
+    r"^##\s+(?:来源|关联|验证历史)\s*\n(?:(?:\s*-\s+.+|\|.+\||\s*\n)+)?",
+    re.MULTILINE,
+)
+_CALLOUT_BLOCK = re.compile(r"^>\s*\[!\w+\][^\n]*(?:\n>\s*[^\n]*)*", re.MULTILINE)
+_COMMENT_BLOCK = re.compile(r"%%\n.*?\n%%", re.DOTALL)
+_COMMENT_INLINE = re.compile(r"%%[^%\n][^%\n]*?%%")
+
 
 def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     """从 md 文本提取 frontmatter dict + 剩余 body。
@@ -43,7 +67,11 @@ def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
 
 
 def serialize_frontmatter(meta: dict[str, Any], body: str) -> str:
-    """frontmatter dict + body → 完整 md 文本。"""
+    """frontmatter dict + body → 完整 md 文本。
+
+    body 不参与 frontmatter 序列化 — 调用方自行拼装到 `---\\n` 之后。
+    若 body 为空,只输出 frontmatter 段。
+    """
     lines = ["---"]
     for key, value in meta.items():
         if isinstance(value, list):
@@ -52,6 +80,8 @@ def serialize_frontmatter(meta: dict[str, Any], body: str) -> str:
                 lines.append(f"  - {item}")
         elif value is None:
             lines.append(f"{key}:")
+        elif isinstance(value, bool):
+            lines.append(f"{key}: {'true' if value else 'false'}")
         else:
             lines.append(f"{key}: {value}")
     lines.append("---")
@@ -61,8 +91,16 @@ def serialize_frontmatter(meta: dict[str, Any], body: str) -> str:
 
 
 def parse_growth_file(text: str) -> Growth:
-    """md 文本 → Growth dataclass。"""
+    """md 文本 → Growth dataclass。
+
+    body 字段经过 Obsidian 剥离:移除 H1 标题 / `## 来源` 段 / `## 关联` 段 /
+    `> [!kind]` callout 块 / `%%...%%` 注释块,只保留用户原始的纯文本。
+    Obsidian-Native 字段(wikilinks / tags_inline / callout / subconscious)
+    由 `mortis.vault.local._enrich_growth_with_obsidian` 在更上层根据
+    vault 原文回填 — 本函数只保证 frontmatter 段 + 剥离后的 body 字段契约。
+    """
     meta, body = parse_frontmatter(text)
+    stripped_body = _strip_obsidian_structure(body)
     try:
         return Growth(
             id=meta["id"],
@@ -77,7 +115,7 @@ def parse_growth_file(text: str) -> Growth:
             emotional_valence=float(meta["emotional_valence"]),
             emotional_arousal=float(meta["emotional_arousal"]),
             tags=tuple(meta.get("tags", []) or []),
-            body=body.rstrip("\n"),
+            body=stripped_body,
         )
     except KeyError as e:
         raise FrontmatterError(f"missing required field: {e.args[0]}") from e
@@ -86,7 +124,13 @@ def parse_growth_file(text: str) -> Growth:
 
 
 def serialize_growth_file(growth: Growth) -> str:
-    """Growth dataclass → md 文本。"""
+    """Growth dataclass → md 文本（旧版,纯 frontmatter + body）。
+
+    新写入路径应使用 `mortis.growth.writer.write_growth_obsidian` —
+    生成完整的 Obsidian-Native 格式 (含 H1 / callout / subconscious 段)。
+    本函数保留为**纯序列化**的底层工具（无 Obsidian 结构加成）,
+    供 frontmatter 层测试和反序列化 round-trip 用。
+    """
     meta: dict[str, Any] = {
         "id": growth.id,
         "dimension": growth.dimension.value,
@@ -100,6 +144,38 @@ def serialize_growth_file(growth: Growth) -> str:
         "tags": list(growth.tags),
     }
     return serialize_frontmatter(meta, growth.body)
+
+
+# ----- 内部: Obsidian 结构剥离 (issue #19) -----
+
+
+def _strip_obsidian_structure(body: str) -> str:
+    """从 body 字段中移除 Obsidian-Native 结构段。
+
+    移除顺序:先块(折叠/callout),再 H1 / H2 段(避免顺序依赖)。
+    返回的 body 保留用户原始纯文本 + 普通 markdown 段落(双链/标签原样)。
+    """
+    if not body:
+        return body
+    out = body
+    out = _COMMENT_BLOCK.sub("", out)
+    out = _COMMENT_INLINE.sub("", out)
+    out = _CALLOUT_BLOCK.sub("", out)
+    out = _H2_SECTION.sub("", out)
+    out = _H1_LINE.sub("", out)
+    # 规范化:合并连续空行,strip 首尾
+    lines = out.split("\n")
+    normalized: list[str] = []
+    prev_blank = True
+    for line in lines:
+        is_blank = line.strip() == ""
+        if is_blank and prev_blank:
+            continue
+        normalized.append(line)
+        prev_blank = is_blank
+    while normalized and normalized[-1].strip() == "":
+        normalized.pop()
+    return "\n".join(normalized)
 
 
 # ---------- 内部 ----------
