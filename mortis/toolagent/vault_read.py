@@ -26,15 +26,23 @@ class VaultReadAgent(ToolAgent):
 
     用 ToolAgent 包装层 — 不重新定义 ToolResult 翻译,直接复用 base.py。
     agent_id 默认 "vault:read"。
+
+    安全: blocked_prefixes 阻止 Mortis 人格层读取受限目录 (issue #38)。
+    默认阻止 mortis-steiner/ — Mortis 不应知道 watcher/unease 的存在。
     """
+
+    # 阻止 Mortis 人格层通过 ToolAgent 读的目录前缀 (issue #38)
+    BLOCKED_PREFIXES: tuple[str, ...] = ("mortis-steiner/",)
 
     def __init__(
         self,
         vault: Vault,
         agent_id: str = "vault:read",
+        blocked_prefixes: tuple[str, ...] | None = None,
     ) -> None:
         self.vault = vault
         self.agent_id = agent_id
+        self._blocked = blocked_prefixes if blocked_prefixes is not None else self.BLOCKED_PREFIXES
 
     def execute(self, input: dict) -> ToolResult:
         rel_path = input.get("rel_path")
@@ -42,6 +50,15 @@ class VaultReadAgent(ToolAgent):
             return ToolResult(
                 success=False, data=None, error="missing or invalid 'rel_path'"
             )
+
+        # 安全检查: blocked prefix (issue #38)
+        rel_path_norm = rel_path.lstrip("./")
+        for prefix in self._blocked:
+            if rel_path_norm.startswith(prefix):
+                return ToolResult(
+                    success=False, data=None,
+                    error=f"access denied: '{rel_path}' matches blocked prefix '{prefix}'",
+                )
 
         resolve_links = bool(input.get("resolve_links", False))
 

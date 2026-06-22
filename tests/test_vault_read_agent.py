@@ -64,3 +64,38 @@ class TestVaultReadAgent:
     def test_agent_id_default(self) -> None:
         agent = VaultReadAgent(Vault(Path("/tmp")))
         assert agent.agent_id == "vault:read"
+
+    # ----- blocked prefix 安全检查 (issue #38) -----
+
+    def test_blocked_steiner_prefix(self, vault_dir: Path) -> None:
+        """issue #38: mortis-steiner/ 目录被阻止读取。"""
+        v = Vault(vault_dir)
+        # 创建 steiner 目录 + 文件
+        steiner_dir = vault_dir / "mortis-steiner"
+        steiner_dir.mkdir(parents=True, exist_ok=True)
+        (steiner_dir / "unease.json").write_text('{"test": true}', encoding="utf-8")
+
+        agent = VaultReadAgent(v)
+        r = agent.execute({"rel_path": "mortis-steiner/unease.json"})
+        assert r.success is False
+        assert "access denied" in (r.error or "").lower()
+        assert "mortis-steiner" in (r.error or "")
+
+    def test_blocked_prefix_with_dot_slash(self, vault_dir: Path) -> None:
+        """issue #38: ./mortis-steiner/ 也不应绕过检查。"""
+        v = Vault(vault_dir)
+        steiner_dir = vault_dir / "mortis-steiner"
+        steiner_dir.mkdir(parents=True, exist_ok=True)
+        (steiner_dir / "unease.json").write_text('{}', encoding="utf-8")
+
+        agent = VaultReadAgent(v)
+        r = agent.execute({"rel_path": "./mortis-steiner/unease.json"})
+        assert r.success is False
+        assert "access denied" in (r.error or "").lower()
+
+    def test_non_blocked_path_still_works(self, seeded_vault: Vault) -> None:
+        """issue #38: 正常路径不受 blocked_prefix 影响。"""
+        agent = VaultReadAgent(seeded_vault)
+        r = agent.execute({"rel_path": "plain.md"})
+        assert r.success is True
+        assert r.data["content"] == "无链接。"
