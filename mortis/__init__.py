@@ -70,6 +70,12 @@ __all__ = [
     "VaultSecurity",
     "ReviewDecision",
     "ReviewGate",
+    # growth CRUD (issue #18 Phase 2 — methods on Vault)
+    "write_growth",
+    "read_growth",
+    "list_growths",
+    "list_growths_by_tag",
+    "list_growths_min_confidence",
     # provider
     "LLMProviderProtocol",
     "Message",

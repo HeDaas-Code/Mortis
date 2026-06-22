@@ -6,6 +6,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from mortis.growth.frontmatter import FrontmatterError, parse_growth_file, serialize_growth_file
+from mortis.growth.model import Dimension, Growth
+from mortis.growth.vault_layout import (
+    DIMENSION_DIRS,
+    GROWTH_DIR,
+    GROWTH_WHITELIST,
+    growth_rel,
+)
+
 from .base import VaultEntry, VaultProtocol, VaultSecurity
 
 
@@ -183,3 +192,85 @@ class Vault:
         p = self._safe_path(rel_path)
         if p.exists():
             p.unlink()
+
+    # ----- growth CRUD (issue #18 Phase 2) -----
+
+    def _ensure_growth_layout(self) -> None:
+        """首次写入前 lazy 创建 mortis-growth/<dimension>/ 子目录。
+
+        __post_init__ 只建 journal 目录 — growth 是后期子系统（#18 决定），
+        不抢 vault 初始化时序。空目录占位允许 list_entries() 在零文件时也能 rglob。
+        """
+        for dim_dir in DIMENSION_DIRS.values():
+            (self.root / GROWTH_DIR / dim_dir).mkdir(parents=True, exist_ok=True)
+
+    def write_growth(self, growth: Growth) -> None:
+        """把 Growth dataclass 写为 md 文件。
+
+        路径由 vault_layout.growth_rel() 决定 — mortis-growth/<dim>/<id>.md。
+        复用 self.write(..., whitelist=GROWTH_WHITELIST) — 不重写安全检查。
+        同 ID 重复写 → 覆盖（self.write 用 p.write_text 语义）。
+        首次调用时 lazy 建子目录。
+        """
+        self._ensure_growth_layout()
+        rel = growth_rel(growth.dimension, growth.id)
+        content = serialize_growth_file(growth)
+        self.write(rel, content, whitelist=GROWTH_WHITELIST)
+
+    def read_growth(self, rel_path: str) -> Growth:
+        """读 vault 内的 growth md 文件 → Growth dataclass。
+
+        文件不存在 → FileNotFoundError（透传 self.read 的行为）。
+        frontmatter 解析失败 → FrontmatterError（透传 parse_growth_file 的行为）。
+        """
+        entry = self.read(rel_path, whitelist=GROWTH_WHITELIST)
+        return parse_growth_file(entry.content)
+
+    def list_growths(self, dimension: Dimension | None = None) -> list[str]:
+        """列 mortis-growth/ 下所有 .md 相对路径。
+
+        Args:
+            dimension: 可选过滤。传了只返回该维度子目录的 .md。
+        """
+        if dimension is not None:
+            subdir = f"{GROWTH_DIR}/{DIMENSION_DIRS[dimension]}"
+            return sorted(
+                e for e in self.list_entries(subdir, whitelist=GROWTH_WHITELIST)
+                if e.endswith(".md")
+            )
+        return sorted(
+            e for e in self.list_entries(GROWTH_DIR, whitelist=GROWTH_WHITELIST)
+            if e.endswith(".md")
+        )
+
+    def list_growths_by_tag(self, tag: str) -> list[str]:
+        """列 frontmatter.tags 包含指定 tag 的 growth 文件。
+
+        用 self.read_growth 解析每篇 — 简单可靠，避免单独维护反向索引。
+        解析失败的文件跳过（不影响主流程）。
+        """
+        results: list[str] = []
+        for rel in self.list_growths():
+            try:
+                g = self.read_growth(rel)
+            except (FileNotFoundError, FrontmatterError):
+                continue
+            if tag in g.tags:
+                results.append(rel)
+        return sorted(results)
+
+    def list_growths_min_confidence(self, min_conf: float) -> list[str]:
+        """列 confidence >= min_conf 的 growth 文件。
+
+        边界：>=（不是 >）— 写测试断言此行为。
+        解析失败的文件跳过。
+        """
+        results: list[str] = []
+        for rel in self.list_growths():
+            try:
+                g = self.read_growth(rel)
+            except (FileNotFoundError, FrontmatterError):
+                continue
+            if g.confidence >= min_conf:
+                results.append(rel)
+        return sorted(results)
