@@ -41,8 +41,17 @@ SUBCONSCIOUS_SUBDIRS: tuple[str, ...] = (
 
 
 def growth_rel(dimension: Dimension, growth_id: str, ext: str = ".md") -> str:
-    """生成 growth 文件相对路径：mortis-growth/<dimension>/<id><ext>。"""
+    """生成 growth 文件相对路径:mortis-growth/<dimension>/<id><ext>。"""
     return f"{GROWTH_DIR}/{DIMENSION_DIRS[dimension]}/{growth_id}{ext}"
+
+
+def growth_archive_rel(dimension: Dimension, growth_id: str, ext: str = ".md") -> str:
+    """生成已 archive 的 growth 相对路径:mortis-growth/archive/<dimension>/<id><ext>。
+
+    issue #23 ERODE: confidence < 0.1 的条目移到 archive/,不再影响行为。
+    按 dimension 子目录保留,便于恢复时知道原属哪一维。
+    """
+    return f"{GROWTH_DIR}/{GROWTH_ARCHIVE_DIR}/{DIMENSION_DIRS[dimension]}/{growth_id}{ext}"
 
 
 def list_dimension_dirs() -> tuple[str, ...]:
