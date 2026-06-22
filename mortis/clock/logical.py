@@ -17,7 +17,7 @@ issue #26: 逻辑时钟(不是真实时钟)判断当前 ConsciousnessState。
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from enum import Enum
 
 
@@ -66,23 +66,44 @@ def _state_for_hour(hour: int) -> ConsciousnessState:
 
 
 class LogicalClock:
-    """逻辑时钟 — 判断当前时段 + 计算下一时段切换。"""
+    """逻辑时钟 — 判断当前时段 + 计算下一时段切换。
 
-    def __init__(self, *, now: datetime | None = None) -> None:
-        """构造 LogicalClock。可选注入 now (测试用)。"""
+    时段表为本地时间语义 (e.g. 22:00 = 晚上十点)。
+    通过 tz 参数指定时区, 默认 UTC (issue #37)。
+    """
+
+    def __init__(
+        self,
+        *,
+        now: datetime | None = None,
+        tz: timezone = timezone.utc,
+    ) -> None:
+        """构造 LogicalClock。
+
+        Args:
+            now: 可选注入 now (测试用)。如有 tz, now 应带相同时区。
+            tz: 时区 — 时段表按此时区解释。默认 UTC。
+        """
         self._now_override = now
+        self._tz = tz
 
     def now(self, real_now: datetime | None = None) -> datetime:
-        """返回当前时间(测试时可注入,否则 datetime.now)。"""
+        """返回当前时间(测试时可注入,否则 datetime.now(tz=self._tz))。"""
         if self._now_override is not None:
             return self._now_override
         if real_now is not None:
             return real_now
-        return datetime.now()
+        return datetime.now(tz=self._tz)
 
     def state(self, at: datetime | None = None) -> ConsciousnessState:
-        """判断 at 时刻的 ConsciousnessState。"""
+        """判断 at 时刻的 ConsciousnessState。
+
+        at 按本 clock 的 tz 解释 — 若 at 带其他时区则先转换 (issue #37)。
+        """
         ts = at if at is not None else self.now()
+        # 转换到 clock 的本地时区再取 hour
+        if ts.tzinfo is not None:
+            ts = ts.astimezone(self._tz)
         return _state_for_hour(ts.hour)
 
     def next_transition(

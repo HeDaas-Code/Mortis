@@ -53,17 +53,20 @@ def test_update_awake_accumulates_hours_and_debt(base_now: datetime) -> None:
 
 
 def test_update_awake_multiple_calls_accumulates(base_now: datetime) -> None:
-    """连续 awake tick: hours_awake 累积(wake_since 不变,从单点持续累加)。"""
+    """连续 awake tick: hours_awake 不双重计数 (issue #35)。
+
+    wake_since 不变, hours_awake = 距醒来时长的单点快照。
+    多次调用应得到相同结果 (不累加)。
+    """
     s = SleepState.fresh(base_now)  # wake_since=base, hours=0
     s = update_sleep_state(s, base_now + timedelta(hours=2), slept=False)
-    # delta from base = 2h → hours = 0+2 = 2
     assert s.hours_awake == pytest.approx(2.0)
     assert s.debt == pytest.approx(2.0)
+    # 第二次调用 — 5h 后, hours_awake = 5 (不是 2+5=7)
     s = update_sleep_state(s, base_now + timedelta(hours=5), slept=False)
-    # delta from base (wake_since 不变) = 5h → hours = 2+5 = 7
-    assert s.hours_awake == pytest.approx(7.0)
-    assert s.debt == pytest.approx(7.0)
-    # wake_since 不动(测试 sleep_state 字段语义)
+    assert s.hours_awake == pytest.approx(5.0)
+    assert s.debt == pytest.approx(5.0)  # debt 也不双重计数
+    # wake_since 不动
     assert s.wake_since == base_now
 
 

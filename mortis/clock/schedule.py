@@ -54,9 +54,11 @@ class Scheduler:
         clock: LogicalClock | None = None,
         *,
         inactivity_minutes: int = OWNER_INACTIVITY_MINUTES,
+        tz: timezone = timezone.utc,
     ) -> None:
-        self.clock = clock or LogicalClock()
+        self.clock = clock or LogicalClock(tz=tz)
         self.inactivity_minutes = inactivity_minutes
+        self._tz = tz
 
     def tick(
         self,
@@ -77,7 +79,7 @@ class Scheduler:
         Returns:
             TickResult — 含当前 state + 各触发标志 + 原因 + 睡眠不足语气。
         """
-        ts = now if now is not None else datetime.now(tz=timezone.utc)
+        ts = now if now is not None else datetime.now(tz=self._tz)
         current_state = self.clock.state(ts)
 
         should_reflect = False

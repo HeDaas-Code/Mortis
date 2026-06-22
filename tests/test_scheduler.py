@@ -115,3 +115,41 @@ def test_custom_inactivity_minutes_changes_threshold() -> None:
     last_active = now - timedelta(minutes=10)
     r = sched.tick(owner_last_active=last_active, now=now)
     assert r.should_trigger_reflect is True
+
+
+# ============================================================
+# 时区 (issue #37)
+# ============================================================
+
+
+def test_scheduler_timezone_shift() -> None:
+    """tz=Asia/Shanghai(+08) → 22:00 CST = 14:00 UTC → REFLECT 时段。
+
+    默认 tz=UTC 时 14:00 是 AWAKE, 加 tz 后应是 REFLECT。
+    """
+    from datetime import timezone, timedelta as _td
+
+    cst = timezone(_td(hours=8))
+    sched = Scheduler(tz=cst)
+    # 14:00 UTC = 22:00 CST → REFLECT
+    now_utc = datetime(2026, 6, 22, 14, 0, tzinfo=timezone.utc)
+    r = sched.tick(now=now_utc)
+    assert r.state.value == "reflect"
+    assert r.should_trigger_reflect is True
+
+
+def test_logical_clock_timezone() -> None:
+    """LogicalClock(tz=CST) — 同一 UTC 时刻, 不同时区 → 不同时段。"""
+    from datetime import timezone, timedelta as _td
+
+    from mortis.clock.logical import LogicalClock
+
+    cst = timezone(_td(hours=8))
+    utc_clock = LogicalClock()
+    cst_clock = LogicalClock(tz=cst)
+    # 14:00 UTC
+    now_utc = datetime(2026, 6, 22, 14, 0, tzinfo=timezone.utc)
+    # UTC clock: 14:00 → AWAKE
+    assert utc_clock.state(now_utc).value == "awake"
+    # CST clock: 14:00 UTC = 22:00 CST → REFLECT
+    assert cst_clock.state(now_utc).value == "reflect"
