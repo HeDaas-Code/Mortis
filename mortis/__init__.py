@@ -41,6 +41,39 @@ from mortis.tools import (
     VaultWriteTool,
     VaultExistsTool,
 )
+from mortis.growth import Dimension, Growth
+
+
+# ----- growth CRUD 顶层包装（issue #18 Phase 2）-----
+# Vault.write_growth / read_growth / list_growths 等是实例方法。
+# 顶层包装让外部代码不必每次都 `vault.write_growth(g)`，可 `mortis.write_growth(vault, g)`。
+# 也方便 sub API / 工具调用层统一入口。
+
+def write_growth(vault: Vault, growth: Growth) -> None:
+    """把 Growth 写为 mortis-growth/<dim>/<id>.md。"""
+    vault.write_growth(growth)
+
+
+def read_growth(vault: Vault, rel_path: str) -> Growth:
+    """读 vault 内的 growth md → Growth dataclass。"""
+    return vault.read_growth(rel_path)
+
+
+def list_growths(
+    vault: Vault, dimension: Dimension | None = None
+) -> list[str]:
+    """列 mortis-growth/ 下所有 .md 相对路径。可选按 dimension 过滤。"""
+    return vault.list_growths(dimension=dimension)
+
+
+def list_growths_by_tag(vault: Vault, tag: str) -> list[str]:
+    """列 frontmatter.tags 包含指定 tag 的 growth 文件。"""
+    return vault.list_growths_by_tag(tag)
+
+
+def list_growths_min_confidence(vault: Vault, min_conf: float) -> list[str]:
+    """列 confidence >= min_conf 的 growth 文件（边界包含）。"""
+    return vault.list_growths_min_confidence(min_conf)
 from mortis.pipeline import (
     PipelineExecutor,
     PipelineResult,
