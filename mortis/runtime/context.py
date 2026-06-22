@@ -9,6 +9,8 @@ from mortis.memory import Session, Thread
 from mortis.vault import Vault
 from mortis.provider import LLMProviderProtocol
 
+from .growth_search import growth_system_prompt, search_growths
+
 
 @dataclass
 class RuntimeContext:
@@ -26,17 +28,67 @@ class RuntimeContext:
     def vault_root(self) -> str:
         return str(self.vault.root)
 
+    # ----- growth 检索 (issue #20) -----
+
+    def search_growths(
+        self,
+        dimension=None,
+        tag: str | None = None,
+        query: str | None = None,
+        min_confidence: float = 0.0,
+        limit: int = 10,
+    ):
+        """主人格检索 growth — 见 mortis.runtime.growth_search.search_growths。
+
+        Args:
+            dimension: 可选 Dimension 过滤。
+            tag: 可选 frontmatter tag 精确匹配。
+            query: 全文关键词(命中 body / wikilinks / tags_inline / tags)。
+            min_confidence: 置信度下界(>=)。
+            limit: 返回数量上限。
+
+        Returns:
+            排序后的 Growth 列表(confidence 降序, last_validated 降序)。
+        """
+        return search_growths(
+            self.vault,
+            dimension=dimension,
+            tag=tag,
+            query=query,
+            min_confidence=min_confidence,
+            limit=limit,
+        )
+
+    def growth_system_prompt(self, max_items: int = 10) -> str:
+        """生成 growth 摘要 prompt — 注入到 system message 之前。
+
+        Args:
+            max_items: 注入的最大 growth 数量(默认 10)。
+
+        Returns:
+            markdown 段 — 若无 growth 则返回空字符串。
+        """
+        items = self.search_growths(limit=max_items)
+        return growth_system_prompt(items)
+
+    # ----- LLM 消息构造 -----
+
     def messages_for_provider(self) -> list["Message"]:
         """构建发给 provider 的消息列表。
 
-        重建完整对话历史：
-        - system: seed tone
+        重建完整对话历史 (issue #20 增量):
+        - system[0]: seed tone
+        - system[1] (可选): growth 摘要 — 在 tone 之后, step output 之前
         - assistant: 每条 Thread step 的 output（按顺序）
         """
         from mortis.provider import Message
         msgs: list[Message] = [
             Message(role="system", content=self.seed.get_dimension("tone")),
         ]
+        # issue #20: 注入 growth 段到第二条 system message
+        growth_prompt = self.growth_system_prompt()
+        if growth_prompt:
+            msgs.append(Message(role="system", content=growth_prompt))
         for step in self.thread.steps:
             msgs.append(Message(role="assistant", content=step.output))
         return msgs
