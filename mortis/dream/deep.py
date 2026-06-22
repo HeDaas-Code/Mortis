@@ -309,13 +309,14 @@ class DeepDreamer(DreamPipeline):
         # 如果需要通知 owner, 写标记文件
         if report.needs_owner_notify:
             try:
+                import json
                 rel = "mortis-subconscious/owner-notify.json"
-                content = (
-                    f'{{"needs_notify": true, '
-                    f'"drift_total": {report.total_drift}, '
-                    f'"threshold": {report.threshold}, '
-                    f'"reported_at": "{datetime.now(tz=timezone.utc).isoformat()}"}}'
-                )
+                content = json.dumps({
+                    "needs_notify": True,
+                    "drift_total": report.total_drift,
+                    "threshold": report.threshold,
+                    "reported_at": datetime.now(tz=timezone.utc).isoformat(),
+                }, ensure_ascii=False)
                 self.vault.write(rel, content, whitelist=None)
             except Exception as e:
                 _logger.warning("deep SEED_CHECK: notify write failed: %s", e)

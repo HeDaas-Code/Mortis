@@ -120,12 +120,17 @@ def load_unease(vault: "Vault") -> UneaseState:
     return UneaseState(per_dimension=per_dim, last_decay=last_decay)
 
 
-def save_unease(vault: "Vault", state: UneaseState) -> None:
+def save_unease(vault: "Vault", state: UneaseState) -> bool:
     """把 UneaseState 写到 vault.mortis-steiner/unease.json。
 
     whitelist=None — steiner 不在 GROWTH_WHITELIST 内,需要显式 None
     绕过 _enforce 检查（但走 _safe_path 路径遍历防御）。
+
+    与 load_unease 一致: 出错静默返回 False, 不干扰主流程 (issue #40)。
     """
+    import logging
+    _logger = logging.getLogger(__name__)
+
     payload = {
         "per_dimension": {
             dim.value: state.per_dimension.get(dim, 0.0)
@@ -134,7 +139,12 @@ def save_unease(vault: "Vault", state: UneaseState) -> None:
         "last_decay": state.last_decay,
     }
     content = json.dumps(payload, ensure_ascii=False, indent=2)
-    vault.write(UNEASE_FILE, content, whitelist=None)
+    try:
+        vault.write(UNEASE_FILE, content, whitelist=None)
+        return True
+    except Exception as e:
+        _logger.warning("save_unease: write failed: %s", e)
+        return False
 
 
 def accumulate(

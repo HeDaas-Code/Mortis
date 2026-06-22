@@ -122,13 +122,7 @@ class LightDreamer(DreamPipeline):
 
         sampled = emotion_weighted_sample(items, k=self.k, rng=self.rng)
         self._recalled = list(sampled)
-        self._recall_texts = [
-            session_texts[items.index((s, v, a))]  # type: ignore[arg-type]
-            for s in sampled
-            for v, a in [self._find_v_a(items, s)]
-            if s in [x[0] for x in items]
-        ]
-        # 简化:用 index
+        # 用 id 映射找 session_texts 中对应的索引
         idx_map = {id(items[i][0]): i for i in range(len(items))}
         self._recall_texts = []
         for s in sampled:
@@ -149,13 +143,6 @@ class LightDreamer(DreamPipeline):
                 "k": self.k,
             },
         )
-
-    @staticmethod
-    def _find_v_a(items, session):
-        for s, v, a in items:
-            if s is session:
-                return v, a
-        return 0.0, 0.0
 
     def _load_recent_sessions(self) -> list[Session]:
         """扫描 vault.mortis-journal/sessions/,返回最近 N 天的 Session。"""
