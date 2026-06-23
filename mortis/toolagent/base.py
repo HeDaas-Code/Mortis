@@ -1,11 +1,12 @@
 """Mortis toolagent base — 无人格工具执行体抽象。
 
-issue #25: 把 ``mortis.tools`` 中的 ``ToolProtocol`` 包装成可被 TaskRouter 路由的
-``ToolAgent``。ToolAgent 是**无人格**的 — 不走 seed / identity / 人格 prompt,
+issue #25: 把 ``mortis.tools`` 中的 ``ToolProtocol`` 包装成可被 ToolRegistry
+注册的 ``ToolAgent``。ToolAgent 是**无人格**的 — 不走 seed / identity / 人格 prompt,
 不写 vault, 不读 seed。设计上可以调 LLM 做工具性任务 (摘要/分类/语义搜索),
 但 LLM 调用不带人格上下文。
 
-issue #63: 基类现已支持 provider 注入,子类可通过 ``_llm_generate()`` 调用 LLM。
+issue #63: 基类已加 provider 字段 (LLMProviderProtocol), 子类可注入。
+5 个内置 agent 全部支持 LLM 能力。
 
 设计要点:
 - ``ToolResult`` (本模块) 与 ``mortis.tools.ToolResult`` 是两个独立 dataclass,
@@ -15,9 +16,11 @@ issue #63: 基类现已支持 provider 注入,子类可通过 ``_llm_generate()`
   agent_id 默认为 ``tool.name`` (例如 ``"vault:read"``)。
 - ``ToolAgent.execute(input: dict)`` 把 dict 当作 ``**kwargs`` 透传给
   ``tool.execute``。tool 抛任何异常 → 返回 ``ToolResult(success=False, error=str(e))``。
-- ``ToolAgentProtocol`` 让上层 (router / registry) 可以鸭子类型地接受任意 agent 实现,
+- ``ToolAgentProtocol`` 让上层 (registry) 可以鸭子类型地接受任意 agent 实现,
   不必依赖具体类 (VaultReadAgent / MarkdownRenderAgent 等)。
-- ``ToolAgent._llm_generate()`` 提供统一的 LLM 调用接口,子类可按需使用。
+
+issue #72: 已删除 task 字符串关键词路由 (TaskRouter)。
+路由决策改为 LLM 通过 ToolRegistry tool calling 自发决定 — 见 issue #64。
 """
 
 from __future__ import annotations
