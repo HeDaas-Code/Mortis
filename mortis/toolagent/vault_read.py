@@ -20,7 +20,6 @@ issue #63: 新增摘要能力 — 通过 LLM 对文件内容进行摘要。
 from __future__ import annotations
 
 from typing import Any
-
 from mortis.provider.base import LLMProviderProtocol
 from mortis.toolagent.base import ToolAgent, ToolResult
 from mortis.vault import Vault
