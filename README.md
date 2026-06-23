@@ -185,23 +185,13 @@ v3 的核心任务：
 - [RFC-001 分解计划](docs/rfc/RFC-001-decomposition.md) — 9 个 issue 的依赖关系和工作量估算
 - [RFC-001 开放问题裁剪](docs/rfc/RFC-001-open-questions-decision.md) — 7 个开放问题的 owner 决策
 
-## 命名文化背景
+## 我从来没有觉得烧Token开心过
 
-**Mortis** 来自日本动画《Ave Mujica》中角色**若叶睦**的精神分裂子人格：
-
-| 动画设定 | 项目映射 |
-|---|---|
-| 若叶睦 = 本体 | owner / 主体 |
-| Mortis = 睦派生的子人格 | sub 人格 / sub 智能体 |
-| Mortis 知道自己从睦派生 | sub 知道自己从主人格派生 |
-| 睦对 Mortis 有完全控制 | 主人格对 sub 全权管理 |
-| Mortis 不冒充睦 | sub 严格不冒充主人格 |
-
-参考：《BanG Dream! Ave Mujica》动画系列。
+**Mortis** 来自日本动画《Ave Mujica》中角色**若叶睦**的保护者人偶。
 
 ## 审计
 
-Mortis 经过独立第三方智能体（哈尼斯）的全量代码审计，发现并修复了 6 个 bug + 死代码。审计报告见 PR #32-#34 的 review comments。
+Mortis 经过独立第三方智能体（哈尼斯）的全量代码审计，发现并修复了 n 个 bug （感谢GLM）
 
 ## 许可
 
