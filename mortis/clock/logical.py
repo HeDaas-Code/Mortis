@@ -47,15 +47,14 @@ _TIME_BLOCKS: list[tuple[int, int, ConsciousnessState]] = [
 
 
 def _state_for_hour(hour: int) -> ConsciousnessState:
-    """纯 hour → state 映射。"""
+    """纯 hour → state 映射。
+
+    _TIME_BLOCKS 已把跨午夜拆成 (start, 24) + (0, end) 两段,
+    所以只需 start <= hour < end 判断。
+    """
     for start, end, state in _TIME_BLOCKS:
-        if start <= end:
-            if start <= hour < end:
-                return state
-        else:
-            # 跨午夜 (0, 2)
-            if hour >= start or hour < end:
-                return state
+        if start <= hour < end:
+            return state
     # 默认 fallback — 实际表覆盖 0-23 全部, 不应到这
     return ConsciousnessState.AWAKE
 

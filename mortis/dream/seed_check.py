@@ -43,8 +43,6 @@ class DriftReport:
 
     def summary(self) -> str:
         """一行字符串摘要 — 写 dream-log 用。"""
-        high = [d.value for d, v in self.per_dimension.items() if v > self.per_dim_alerts[d.value if False else Dimension.IDENTITY]]
-        # 简化为 max-dim
         if self.per_dimension:
             max_dim = max(self.per_dimension.items(), key=lambda kv: kv[1])
             return f"drift={self.total_drift:.2f} max_dim={max_dim[0].value}={max_dim[1]:.2f}"
