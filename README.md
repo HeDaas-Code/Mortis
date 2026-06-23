@@ -269,8 +269,6 @@ RFC-001 的 9 个模块都已实现并通过测试，但它们 **还没有接入
 
 | Issue | 内容 |
 |-------|------|
-| #50 | Obsidian 插件 scaffold + Graph View 集成 |
-| #51 | 插件: 侧栏状态面板 + dream 日历视图 |
 | #52 | Web UI server + 对话界面 |
 | #53 | Web UI: dream 日历 + growth 浏览器 + unease 仪表盘 |
 | #54 | owner 通知通道 — drift 报警实际推送 (email/feishu/webhook) |
