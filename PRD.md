@@ -252,7 +252,7 @@ v0 不做（明确划线）：
 - **v0（当前）**：骨架——vault 抽象 + 主人格引擎 + mortis 架构核心
 - **v1**：LangChain 抽象 + Obsidian vault 实现
 - **v2**：多 LLM 后端 + sub 并发调度
-- **v3**：Obsidian 插件 + Web UI
+- **v3**： Web UI
 
 ### 后续
 
