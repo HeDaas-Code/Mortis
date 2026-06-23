@@ -5,6 +5,7 @@ issue #25 验收 #1。
 
 from __future__ import annotations
 
+import importlib
 import logging
 
 import pytest
@@ -119,6 +120,7 @@ class TestToolAgentFactory:
 
 
 # ============================================================
+<<<<<<< HEAD
 # _llm_generate (issue #70 MEDIUM-E)
 # ============================================================
 
@@ -251,3 +253,47 @@ class TestToolAgentLlmGenerate:
         agent = self._build(provider=provider)
         agent._llm_generate("hi", system="you are a search reranker")
         assert provider.calls[0][1] == "you are a search reranker"
+=======
+# issue #72 MEDIUM-G — TaskRouter 已删除, 不应再导出
+# ============================================================
+
+
+class TestTaskRouterRemoved:
+    """回归保护: toolagent.TaskRouter / RouteDecision / TOOL_KEYWORDS 已删除。
+
+    防止未来有人重新引入这些类 — issue #72 修复后, 路由决策由 LLM 通过
+    ToolRegistry tool calling 自发决定 (见 issue #64)。
+    """
+
+    def test_toolagent_package_does_not_export_task_router(self):
+        """mortis.toolagent 不再导出 TaskRouter / RouteDecision / TOOL_KEYWORDS。"""
+        import mortis.toolagent
+        assert not hasattr(mortis.toolagent, "TaskRouter"), (
+            "issue #72: TaskRouter 已删除, 不应再导出 — "
+            "路由改由 LLM 通过 ToolRegistry 决定 (issue #64)"
+        )
+        assert not hasattr(mortis.toolagent, "RouteDecision"), (
+            "issue #72: RouteDecision 已删除, 不应再导出"
+        )
+        assert not hasattr(mortis.toolagent, "TOOL_KEYWORDS"), (
+            "issue #72: TOOL_KEYWORDS 已删除, 不应再导出"
+        )
+
+    def test_toolagent_router_module_removed(self):
+        """mortis.toolagent.router 模块已删除 — ImportError 是预期行为。
+
+        这是反断言: 如果未来有人把 router 加回来 (且没走 legacy 子包),
+        此测试立即失败提醒。
+        """
+        with pytest.raises(ImportError):
+            importlib.import_module("mortis.toolagent.router")
+
+    def test_pipeline_task_router_preserved(self):
+        """pipeline.TaskRouter 是不同类 (简单/复杂任务路由), 必须保留。"""
+        from mortis.pipeline.router import TaskRouter as PipelineTaskRouter
+        from mortis.pipeline.router import RouteDecision as PipelineRouteDecision
+
+        # 验证是不同类 (来自 mortis.pipeline 而非 mortis.toolagent)
+        assert PipelineTaskRouter.__module__ == "mortis.pipeline.router"
+        assert PipelineRouteDecision.__module__ == "mortis.pipeline.router"
+>>>>>>> 82128b5 (test(toolagent): TaskRouter 删除回归保护 (issue #72 MEDIUM-G))
