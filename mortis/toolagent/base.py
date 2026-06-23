@@ -2,8 +2,11 @@
 
 issue #25: 把 ``mortis.tools`` 中的 ``ToolProtocol`` 包装成可被 TaskRouter 路由的
 ``ToolAgent``。ToolAgent 是**无人格**的 — 不走 seed / identity / 人格 prompt,
-不写 vault, 不读 seed。可以调 LLM 做工具性任务 (摘要/分类), 但 LLM 调用不带
-人格上下文。当前 5 个内置 agent 均为纯工具操作, 不需要 LLM。
+不写 vault, 不读 seed。设计上可以调 LLM 做工具性任务 (摘要/分类/语义搜索),
+但 LLM 调用不带人格上下文。
+
+⚠ 已知 bug (#63): 基类当前没有 provider 字段, 子类也没有注入 provider 的途径。
+   5 个内置 agent 全是纯工具操作。#63 将重构基类 + 3 个 agent 加 LLM 能力。
 
 设计要点:
 - ``ToolResult`` (本模块) 与 ``mortis.tools.ToolResult`` 是两个独立 dataclass,

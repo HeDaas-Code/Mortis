@@ -130,30 +130,30 @@ ReviewDecision:
 
 ### 🔧 子智能体系统（Tool Agent）
 
-Tool Agent 是**无人格执行体**——比 sub 更轻量：不走 seed / identity / 人格 prompt，只做工具性任务。它可以调 LLM（比如摘要、分类），但 LLM 调用不带人格上下文，纯粹是工具性的。它不写 vault、不读 seed，是 sub 系统的补充，处理不需要人格判断的操作。
+Tool Agent 是**无人格执行体**——不走 seed / identity / 人格 prompt，但可以调 LLM 做工具性任务（语义搜索、摘要、分析）。LLM 调用不带人格上下文，纯粹是工具性的。它不写 vault、不读 seed，是 sub 系统的补充。
+
+> ⚠ **已知 bug (#63)**: 当前 5 个内置 agent 全不调 LLM，只有纯工具操作。VaultSearchAgent 缺语义搜索、VaultStatsAgent 缺 LLM 分析、VaultReadAgent 缺摘要能力。#63 将重构这些 agent 注入 provider。
 
 #### 与 sub 的区别
 
 | | Sub-Personality | Tool Agent |
 |---|---|---|
 | **人格 prompt** | 有 (从 seed 派生, 走 identity/tone/voice) | 无 (纯工具性, 不注入人格) |
-| **LLM 调用** | 有 (带人格 system prompt) | 可有可无 (工具性调用, 不带人格; 当前 5 个内置 agent 均为纯工具不需 LLM) |
+| **LLM 调用** | 有 (带人格 system prompt) | 有 (工具性调用, 不带人格; ⚠ #63 前 5 个内置 agent 缺失 LLM 能力) |
 | **vault 写权限** | 有 (经 ReviewGate 审阅) | 无 (只读) |
 | **seed 访问** | 有 (锚定 parent_seed_hash) | 无 |
 | **持久化** | 默认不持久化 (任务完成即销毁) | 无状态 |
-| **适用场景** | 需要人格判断 / 多步骤 / 产出写入 vault | 查询 / 统计 / 渲染 / 工具性 LLM 调用 |
+| **适用场景** | 需要人格判断 / 多步骤 / 产出写入 vault | 语义搜索 / 摘要 / 分析 / 查询 / 统计 |
 
 #### 5 个内置 Tool Agent
 
-当前内置 agent 均为纯工具操作（不调 LLM）：
-
-| Agent | 能力 | 安全 |
-|-------|------|------|
-| **VaultReadAgent** | 读 vault 文件 + Obsidian 双链解析 | `blocked_prefixes` 阻止读 `mortis-steiner/` |
-| **VaultSearchAgent** | 关键词搜索 + 标签过滤 + 双链图 BFS 遍历 | 只读 |
-| **VaultStatsAgent** | growth 统计 (维度分布 / 置信度直方图) | 只读 |
-| **MarkdownRenderAgent** | Obsidian 语法解析 (双链/标签/嵌入/折叠/callout) | 无 vault 权限 |
-| **ClockAgent** | 当前时间 + 逻辑时钟相位 + 上次 dream 时间 | 只读 |
+| Agent | 能力 | LLM | 安全 |
+|-------|------|-----|------|
+| **VaultReadAgent** | 读 vault 文件 + Obsidian 双链解析 | ⚠ #63 待加摘要 | `blocked_prefixes` 阻止读 `mortis-steiner/` |
+| **VaultSearchAgent** | 关键词搜索 + 标签过滤 + 双链图 BFS 遍历 | ⚠ #63 待加语义搜索 | 只读 |
+| **VaultStatsAgent** | growth 统计 (维度分布 / 置信度直方图) | ⚠ #63 待加分析 | 只读 |
+| **MarkdownRenderAgent** | Obsidian 语法解析 (双链/标签/嵌入/折叠/callout) | 不需要 (纯解析) | 无 vault 权限 |
+| **ClockAgent** | 当前时间 + 逻辑时钟相位 + 上次 dream 时间 | 不需要 (报时间) | 只读 |
 
 #### 关键词路由
 

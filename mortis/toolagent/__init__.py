@@ -1,8 +1,12 @@
 """Mortis toolagent — 无人格工具执行体层 (issue #25)。
 
 ToolAgent 是**无人格**执行体 — 不走 seed / identity / 人格 prompt, 不写 vault,
-不读 seed。可以调 LLM 做工具性任务 (摘要/分类), 但 LLM 调用不带人格上下文。
-当前 5 个内置 agent 均为纯工具操作, 不需要 LLM。
+不读 seed。设计上可以调 LLM 做工具性任务 (摘要/分类/语义搜索), 但 LLM 调用
+不带人格上下文。
+
+⚠ 已知 bug (#63): 当前 5 个内置 agent 全不调 LLM, 只有纯工具操作。
+   VaultSearchAgent 缺语义搜索, VaultStatsAgent 缺 LLM 分析, VaultReadAgent
+   缺摘要能力。#63 将重构这些 agent 注入 provider。
 
 设计要点:
 - 与 mortis.tools 并存 (RFC §13.3 决定): Tool 是 LLM 可调用接口,
@@ -12,11 +16,6 @@ ToolAgent 是**无人格**执行体 — 不走 seed / identity / 人格 prompt, 
   - MarkdownRenderAgent (复用 obsidian 解析层,无 vault 权限)
   - ClockAgent (当前时间 + 上次 dream,只读 steiner/)
 - ToolRouter 增加工具关键词检测 (读 / 搜索 / 统计 / 解析 / 现在几点)
-
-不在 #25 范围:
-- 不实现带 LLM 调用的 ToolAgent (架构允许, 但当前 5 个内置 agent 不需要)
-- 不修改 mortis.tools (ToolAgent 只包 ToolProtocol,不重写)
-- 不实现完整的 owner 通知通道 (drift 报警只标记 needs_notify)
 """
 
 from __future__ import annotations
