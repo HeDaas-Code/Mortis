@@ -237,18 +237,41 @@ mortis/
 - **v3** (下一步): 运行时集成——把 clock/scheduler/dream/reflect/steiner 接入 CLI 和 runtime
 - **v4**: Obsidian 插件 + Web UI + 多 LLM 后端
 
-### v3 下一步具体工作
+### v3 路线图
 
 RFC-001 的 9 个模块都已实现并通过测试，但它们 **还没有接入运行时**。当前 CLI 只暴露 v0 的 `delegate/pending/approve/archive` 命令，clock/dream/reflect/steiner 需要 owner 手动调 Python API。
 
-v3 的核心任务：
+#### v3.0 运行时集成 (#62) — P1
 
-1. **Daemon 模式** —— `python -m mortis --vault ~/my-vault --daemon` 启动后台进程，LogicalClock 自动 tick
-2. **Scheduler 集成** —— Scheduler.tick() 触发 ReflectExecutor / DreamExecutor，不需要手动调
-3. **Steiner watcher 启动** —— GrowthWatcher 监听 `mortis-growth/` 变更，自动 accumulate unease
-4. **CLI 扩展** —— `mortis reflect`、`mortis dream --level light|medium|deep`、`mortis clock` 命令
-5. **unease 注入 RuntimeContext** —— AWAKE 时读 unease，注入 system prompt 潜台词
-6. **dream-log 查询** —— `mortis dreams` 列历史 dream 记录
+让 Mortis 从"可调用的库"变成"活的人格"：
+
+| Issue | 内容 |
+|-------|------|
+| #56 | CLI 扩展 — `mortis reflect` / `mortis dream --level` / `mortis clock` / `mortis dreams` |
+| #57 | unease 注入 RuntimeContext — AWAKE 时读 unease 写入 system prompt 潜台词 |
+| #58 | GrowthWatcher 启动 — runtime 启动时自动监听 growth 变更 → accumulate unease |
+| #59 | growth 检索集成 — pipeline prompt 自动注入相关 growth 上下文 |
+| #60 | Daemon 模式 — 后台进程 + Scheduler.tick 循环 |
+| #61 | owner「晚安」关键词触发 REFLECT |
+
+#### v3.1 生产化 (#49) — P2
+
+| Issue | 内容 |
+|-------|------|
+| #45 | 多 LLM 后端 — OpenAI + Claude + registry 重构 |
+| #46 | async generate_text + retry + timeout |
+| #47 | growth 维度压缩 — 某维度 > 50 条触发合并摘要 |
+| #48 | drift 误报率监控 + 重审触发 |
+
+#### v3.2 体验层 (#55) — P3
+
+| Issue | 内容 |
+|-------|------|
+| #50 | Obsidian 插件 scaffold + Graph View 集成 |
+| #51 | 插件: 侧栏状态面板 + dream 日历视图 |
+| #52 | Web UI server + 对话界面 |
+| #53 | Web UI: dream 日历 + growth 浏览器 + unease 仪表盘 |
+| #54 | owner 通知通道 — drift 报警实际推送 (email/feishu/webhook) |
 
 ## 文档
 
