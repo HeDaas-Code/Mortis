@@ -1,18 +1,16 @@
 """Mortis toolagent — TaskRouter: 任务路由决策。
 
-issue #25: 扩展路由,工具操作类 → ToolAgent 路径(直接调,不走 sub)。
+⚠ 已知 bug (#64): 关键词路由是架构错误。ToolAgent 应该注册为 ToolProtocol,
+由 LLM 通过 tool calling 自发调用, 而不是用关键词 substring 匹配硬编码路由。
+#64 将删除本模块的关键词路由, 把 ToolAgent 注册到 ToolRegistry。
 
-关键词检测 (中文 case-insensitive substring):
-    读 / 读取        → VaultReadAgent
-    搜索 / 查找       → VaultSearchAgent
-    统计 / 计数       → VaultStatsAgent
-    解析 / 渲染       → MarkdownRenderAgent
-    现在几点 / 当前时间 → ClockAgent
-
-不在 ToolAgent 路径的(保持原路由):
-    简单 LLM 类 → 主人格 + provider
-    需人格判断 → 派 sub
-    价值观判断 → 主人格
+当前实现 (将被替换):
+    关键词检测 (中文 case-insensitive substring):
+        读 / 读取        → VaultReadAgent
+        搜索 / 查找       → VaultSearchAgent
+        统计 / 计数       → VaultStatsAgent
+        解析 / 渲染       → MarkdownRenderAgent
+        现在几点 / 当前时间 → ClockAgent
 """
 
 from __future__ import annotations

@@ -155,18 +155,18 @@ Tool Agent 是**无人格执行体**——不走 seed / identity / 人格 prompt
 | **MarkdownRenderAgent** | Obsidian 语法解析 (双链/标签/嵌入/折叠/callout) | 不需要 (纯解析) | 无 vault 权限 |
 | **ClockAgent** | 当前时间 + 逻辑时钟相位 + 上次 dream 时间 | 不需要 (报时间) | 只读 |
 
-#### 关键词路由
+#### 调用方式
 
-`TaskRouter` (toolagent 层) 检测任务关键词，命中则直接路由到对应 Agent：
+Tool Agent 注册到 `ToolRegistry`（与 `VaultReadTool` 等纯工具共用注册表），由主智能体 / sub 智能体在对话中通过 **LLM tool calling** 自发调用：
 
 ```
-"读 vault" / "读文件" → VaultReadAgent
-"搜索" / "查找"      → VaultSearchAgent
-"统计" / "计数"      → VaultStatsAgent
-"解析" / "渲染"      → MarkdownRenderAgent
-"现在几点"           → ClockAgent
-(无匹配)             → 主人格 / sub 路径
+LLM → tool_call("vault:search", {"query": "焦虑", "semantic": true})
+    → registry.execute("vault:search", ...)
+    → VaultSearchAgent.execute(...) (内部可调 LLM 做语义排序)
+    → 结果回传 LLM
 ```
+
+> ⚠ **已知 bug (#64)**: 当前 `TaskRouter` 用关键词 substring 匹配路由，绕过了 LLM 决策。#64 将删除关键词路由，把 ToolAgent 注册为 `ToolProtocol` 由 LLM 自发调用。
 
 ## 快速开始
 
