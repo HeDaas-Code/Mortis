@@ -11,6 +11,7 @@ from typing import Any
 from .base import ToolProtocol, ToolResult
 from mortis.provider.base import LLMProviderProtocol
 from mortis.vault import Vault
+from mortis.vault.normalize import normalize_rel_path
 from mortis.toolagent import (
     VaultReadAgent,
     VaultSearchAgent,
@@ -18,6 +19,12 @@ from mortis.toolagent import (
     MarkdownRenderAgent,
     ClockAgent,
 )
+
+
+# sub 智能体私域: 主人格通过 tool call 不可读 (issue #68 audit Critical-B)
+# 阻断 `mortis-journal/sub-outputs/` 防止 LLM 探测 sub 产出 (review/merge/edit 三态)
+# normalize 后强制加 "/" 后缀,避免 `mortis-journal/sub-outputs` (无尾 /) 漏判
+SUB_OUTPUT_PREFIXES: tuple[str, ...] = ("mortis-journal/sub-outputs/",)
 
 
 class VaultReadToolAgent(ToolProtocol):
@@ -72,6 +79,18 @@ class VaultReadToolAgent(ToolProtocol):
         summarize: bool = False,
         summary_length: int = 100,
     ) -> ToolResult:
+        # 安全检查: sub 私域阻断 (issue #68 audit Critical-B)
+        # 用栈式归一化防止 LLM 构造 `mortis-journal/foo/../sub-outputs/x.md` 绕过
+        # 末尾补 "/" 防止 `mortis-journal/sub-outputs` (无尾 /) 漏判
+        rel_path_norm = normalize_rel_path(rel_path)
+        if not rel_path_norm.endswith("/"):
+            rel_path_norm += "/"
+        for prefix in SUB_OUTPUT_PREFIXES:
+            if rel_path_norm.startswith(prefix):
+                return ToolResult.err(
+                    self.name,
+                    f"access denied: '{rel_path}' is sub private domain ({prefix})",
+                )
         result = self._agent.execute({
             "rel_path": rel_path,
             "resolve_links": resolve_links,
