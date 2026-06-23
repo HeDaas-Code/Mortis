@@ -63,12 +63,15 @@ def update_sleep_state(
             hours_awake=0.0,
             debt=min(DEBT_MAX, state.debt * DEBT_DECAY),
         )
-    # awake 时段 → 累积 hours_awake, debt 同步增。
-    # wake_since 保持不变:hours_awake 是"距上次醒来的总时长"快照,
-    # 任何时刻调用 update 都能从 wake_since 单点重算增量。
+    # awake 时段 → hours_awake = 距上次醒来的总时长 (从 wake_since 单点计算)。
+    # wake_since 保持不变: 任何时刻调用 update 都能从 wake_since 单点重算。
+    # 不做增量累加 — 否则多次 tick 会双重计数 (issue #35)。
     delta_h = (now - state.wake_since).total_seconds() / 3600.0
-    new_hours = state.hours_awake + max(0.0, delta_h)
-    new_debt = min(DEBT_MAX, state.debt + max(0.0, delta_h))
+    delta_h = max(0.0, delta_h)
+    new_hours = delta_h
+    # debt 增量 = 本次 delta_h − 上次已记的 hours_awake (不重复累积)
+    increment = max(0.0, delta_h - state.hours_awake)
+    new_debt = min(DEBT_MAX, state.debt + increment)
     return replace(
         state,
         hours_awake=new_hours,
