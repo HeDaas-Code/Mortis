@@ -237,7 +237,7 @@ mortis/
 - **v2.0-v2.2** ✅: ReflectExecutor + DreamExecutor Light
 - **v2.3-v2.5** ✅: Dream Medium/Deep + Reading Steiner + 逻辑时钟 + Tool Agent 层
 - **v3** (下一步): 运行时集成——把 clock/scheduler/dream/reflect/steiner 接入 CLI 和 runtime
-- **v4**: Obsidian 插件 + Web UI + 多 LLM 后端
+- **v4**: Web UI + 多 LLM 后端
 
 ### v3 路线图
 
