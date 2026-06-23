@@ -31,6 +31,12 @@ from mortis.reflect import (
 from mortis.vault import Vault
 
 
+def _today() -> str:
+    """UTC today — 与 executor._next_reflection_id() 同源。"""
+    return datetime.now(tz=timezone.utc).strftime('%Y-%m-%d')
+
+
+
 # ============================================================
 # fixtures
 # ============================================================
@@ -38,10 +44,15 @@ from mortis.vault import Vault
 
 @pytest.fixture
 def vault_dir() -> Path:
-    """每次测试一个 tmp 目录 + 配好 sessions 子目录(2 个 session)。"""
+    """每次测试一个 tmp 目录 + 配好 sessions 子目录(2 个 session)。
+
+    sessions 目录用 _today() 动态生成, 与 executor._next_reflection_id() 的
+    datetime.now() 保持同日 (避免跨日测试 flaky)。
+    """
     with tempfile.TemporaryDirectory(prefix="mortis-reflect-") as td:
         d = Path(td)
-        sessions_dir = d / "mortis-journal" / "sessions" / "2026-06-22"
+        today_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+        sessions_dir = d / "mortis-journal" / "sessions" / today_str
         sessions_dir.mkdir(parents=True, exist_ok=True)
         s1 = Session(session_id="session-a", threads=["th-1"])
         s1.save(sessions_dir)
@@ -85,7 +96,7 @@ class TestRunEndToEnd:
         r = ex.run(["session-a.json", "session-b.json"], sessions_dir=sessions_dir)
 
         assert isinstance(r, Reflection)
-        assert r.id == "reflect-2026-06-22-001"
+        assert r.id == f"reflect-{_today()}-001"
         assert r.session_paths == ("session-a.json", "session-b.json")
         assert r.valence == 0.4
         assert r.arousal == 0.3
@@ -106,7 +117,7 @@ class TestRunEndToEnd:
         content = target.read_text(encoding="utf-8")
         # frontmatter
         assert content.startswith("---\n")
-        assert "id: reflect-2026-06-22-001" in content
+        assert f"id: reflect-{_today()}-001" in content
         assert "session_paths:" in content
         assert "  - session-a.json" in content
         assert "valence: 0.5" in content
@@ -137,8 +148,9 @@ class TestRunEndToEnd:
         provider = _make_provider("默认路径测试。", 0.0, 0.0)
         ex = ReflectExecutor(vault, provider, mortis_name="Mortis")
         # 不传 sessions_dir — 走默认;rel 带日期子目录
-        r = ex.run(["2026-06-22/session-a.json", "2026-06-22/session-b.json"])
-        assert r.id == "reflect-2026-06-22-001"
+        today_str = _today()
+        r = ex.run([f"{today_str}/session-a.json", f"{today_str}/session-b.json"])
+        assert r.id == f"reflect-{_today()}-001"
 
 
 # ============================================================
@@ -155,7 +167,7 @@ class TestReflectionId:
         provider = _make_provider("first", 0.0, 0.0)
         ex = ReflectExecutor(vault, provider, mortis_name="M")
         r = ex.run(["session-a.json"], sessions_dir=sessions_dir)
-        assert r.id == "reflect-2026-06-22-001"
+        assert r.id == f"reflect-{_today()}-001"
 
     def test_second_id_is_002(self, vault_dir: tuple[Path, Path]) -> None:
         d, sessions_dir = vault_dir
@@ -164,8 +176,8 @@ class TestReflectionId:
         ex = ReflectExecutor(vault, provider, mortis_name="M")
         r1 = ex.run(["session-a.json"], sessions_dir=sessions_dir)
         r2 = ex.run(["session-b.json"], sessions_dir=sessions_dir)
-        assert r1.id == "reflect-2026-06-22-001"
-        assert r2.id == "reflect-2026-06-22-002"
+        assert r1.id == f"reflect-{_today()}-001"
+        assert r2.id == f"reflect-{_today()}-002"
 
 
 # ============================================================
@@ -211,8 +223,8 @@ class TestEmotionCacheIntegration:
 class TestPathHelpers:
     def test_reflection_rel_format(self) -> None:
         assert (
-            reflection_rel("reflect-2026-06-22-001")
-            == f"{SUBCONSCIOUS_ROOT}/{PENDING_REFLECTIONS_SUBDIR}/reflect-2026-06-22-001.md"
+            reflection_rel(f"reflect-{_today()}-001")
+            == f"{SUBCONSCIOUS_ROOT}/{PENDING_REFLECTIONS_SUBDIR}/reflect-{_today()}-001.md"
         )
 
     def test_list_pending_reflections_empty(self, vault_dir: tuple[Path, Path]) -> None:
