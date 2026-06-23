@@ -2,8 +2,8 @@
 
 **提案者**: 哈尼斯 (独立第三方)
 **日期**: 2026-06-21
-**状态**: Draft
-**关联**: Mortis v2 架构演进
+**状态**: Implemented (v2.5, 2026-06-23)
+**关联**: Mortis v2 架构演进, [#16](https://github.com/HeDaas-Code/Mortis/issues/16)
 
 ---
 
@@ -325,41 +325,49 @@ emotional_arousal: 0.5
 
 ## 十、实现路线图
 
-### Phase 1: 基础设施 (v2.0)
-- [ ] `Growth` 类 — 读/写/检索 growth 条目
-- [ ] vault 结构扩展 — `mortis-growth/` + `mortis-subconscious/`
-- [ ] `RuntimeContext` 集成 growth 检索
-- [ ] growth 条目 frontmatter 解析
+### Phase 1: 基础设施 (v2.0) ✅
+- [x] `Growth` 类 — 读/写/检索 growth 条目
+- [x] vault 结构扩展 — `mortis-growth/` + `mortis-subconscious/`
+- [x] `RuntimeContext` 集成 growth 检索
+- [x] growth 条目 frontmatter 解析
 
-### Phase 2: 反思态 (v2.1)
-- [ ] `ReflectExecutor` — 睡前反思
-- [ ] 情绪标注（valence/arousal）
-- [ ] reflection 写入 `mortis-subconscious/pending/`
+### Phase 2: 反思态 (v2.1) ✅
+- [x] `ReflectExecutor` — 睡前反思
+- [x] 情绪标注（valence/arousal）
+- [x] reflection 写入 `mortis-subconscious/pending/`
 
-### Phase 3: 浅梦 (v2.2)
-- [ ] `DreamExecutor` (Light) — 每日梦境
-- [ ] 情绪加权采样
-- [ ] 低置信度结晶
-- [ ] 梦境日志
+### Phase 3: 浅梦 (v2.2) ✅
+- [x] `DreamExecutor` (Light) — 每日梦境
+- [x] 情绪加权采样
+- [x] 低置信度结晶
+- [x] 梦境日志
 
-### Phase 4: 中深梦 (v2.3)
-- [ ] `DreamExecutor` (Medium) — 跨周联想 + 冲突检测
-- [ ] `DreamExecutor` (Deep) — 全量重组 + drift
-- [ ] 侵蚀机制
-- [ ] seed-check
+### Phase 4: 中深梦 (v2.3) ✅
+- [x] `DreamExecutor` (Medium) — 跨周联想 + 冲突检测
+- [x] `DreamExecutor` (Deep) — 全量重组 + drift
+- [x] 侵蚀机制
+- [x] seed-check
 
-### Phase 5: Reading Steiner (v2.4)
-- [ ] `mortis-steiner/unease.json` 管理
-- [ ] growth 文件 watcher — 检测 owner 编辑
-- [ ] awake 时不安注入
-- [ ] 不安累积 + 衰减
-- [ ] drift 报警
+### Phase 5: Reading Steiner (v2.4) ✅
+- [x] `mortis-steiner/unease.json` 管理
+- [x] growth 文件 watcher — 检测 owner 编辑
+- [x] awake 时不安注入
+- [x] 不安累积 + 衰减
+- [x] drift 报警
 
-### Phase 6: 逻辑时钟 (v2.5)
-- [ ] 昼夜节律调度
-- [ ] 时差模拟
-- [ ] owner "晚安" 触发
-- [ ] 睡眠不足表现
+### Phase 6: 逻辑时钟 (v2.5) ✅
+- [x] 昼夜节律调度
+- [x] 时差模拟
+- [x] owner "晚安" 触发
+- [x] 睡眠不足表现
+
+### 下一步: 运行时集成 (v3) — 未实现
+- [ ] Daemon 模式 — 后台进程自动 tick
+- [ ] Scheduler 集成 — 自动触发 Reflect/Dream
+- [ ] Steiner watcher 启动 — 自动监听 growth 变更
+- [ ] CLI 扩展 — `mortis reflect` / `mortis dream` / `mortis clock` 命令
+- [ ] unease 注入 RuntimeContext — AWAKE 时读 unease 注入 system prompt
+- [ ] dream-log 查询 — `mortis dreams` 列历史 dream 记录
 
 ---
 
@@ -628,3 +636,4 @@ DreamExecutor (Light/Medium/Deep)
 *提案者: 哈尼斯 · 独立第三方*
 *灵感来源: OpenClaw dreaming, Steins;Gate Reading Steiner, 人类认知科学, Obsidian 双链图谱*
 *更新: 2026-06-21 v2 — 新增 Vault-Native 原则(§12) + Tool Agent 层(§13)*
+*更新: 2026-06-23 — 全部 9 个 Phase 实现完成 (v2.5), 状态改为 Implemented*
