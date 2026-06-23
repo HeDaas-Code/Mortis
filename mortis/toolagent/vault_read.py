@@ -15,9 +15,10 @@ issue #25: vault 只读 Agent。读 md 文件 + 可选双链解析。
 from __future__ import annotations
 
 from typing import Any
-
+from mortis.provider.base import LLMProviderProtocol
 from mortis.toolagent.base import ToolAgent, ToolResult
 from mortis.vault import Vault
+from mortis.vault.normalize import normalize_rel_path
 from mortis.vault.obsidian import parse as parse_obsidian
 
 
@@ -52,7 +53,9 @@ class VaultReadAgent(ToolAgent):
             )
 
         # 安全检查: blocked prefix (issue #38)
-        rel_path_norm = rel_path.lstrip("./")
+        # 用栈式归一化消除路径中段的 ..,避免 LLM 构造
+        # `mortis-journal/../mortis-steiner/x.md` 绕过白名单 (issue #67 audit Critical-A)。
+        rel_path_norm = normalize_rel_path(rel_path)
         for prefix in self._blocked:
             if rel_path_norm.startswith(prefix):
                 return ToolResult(
