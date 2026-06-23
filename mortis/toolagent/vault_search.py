@@ -173,15 +173,17 @@ SUMMARY: <对相关文档的简短摘要>
             if score_lines:
                 # 创建分数映射
                 score_map = {idx: score for idx, score in score_lines}
-                # 对 matches 排序
-                matches_sorted = sorted(
-                    matches[:20],
-                    key=lambda m: score_map.get(matches.index(m), 0.0),
-                    reverse=True
+                # 用 enumerate 建索引映射，避免重复元素 + O(n²) 问题
+                indexed = list(enumerate(matches[:20]))
+                indexed_sorted = sorted(
+                    indexed,
+                    key=lambda pair: score_map.get(pair[0], 0.0),
+                    reverse=True,
                 )
+                matches_sorted = [m for _, m in indexed_sorted]
                 # 更新分数
-                for m in matches_sorted:
-                    m["score"] = score_map.get(matches.index(m), 0.0)
+                for orig_idx, m in zip([i for i, _ in indexed_sorted], matches_sorted):
+                    m["score"] = score_map.get(orig_idx, 0.0)
                 return matches_sorted, summary
 
             return matches, summary

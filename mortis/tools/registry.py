@@ -74,8 +74,9 @@ def make_default_registry(
     from mortis.vault import Vault as VaultClass
     registry = ToolRegistry()
     if vault is not None:
-        from .vault_tool import VaultReadTool, VaultListTool, VaultWriteTool, VaultExistsTool
-        registry.register(VaultReadTool(vault))
+        # vault:read 已被 vault:read_agent 取代 (审计问题 3)
+        # 保留 list/write/exists 基础工具
+        from .vault_tool import VaultListTool, VaultWriteTool, VaultExistsTool
         registry.register(VaultListTool(vault))
         registry.register(VaultWriteTool(vault))
         registry.register(VaultExistsTool(vault))

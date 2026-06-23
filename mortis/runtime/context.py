@@ -121,11 +121,11 @@ class RuntimeContext:
         msgs: list[Message] = [
             Message(role="system", content=self.seed.get_dimension("tone")),
         ]
-        # issue #59: 动态检索 growth
+        # issue #59: 动态检索 growth — 调用 growth_context_for_task 统一入口
         task_context = self.thread.task or ""
-        growths = self.search_growths(query=task_context, limit=5)
-        if growths:
-            msgs.append(Message(role="system", content=growth_system_prompt(growths)))
+        growth_prompt = self.growth_context_for_task(task_context)
+        if growth_prompt:
+            msgs.append(Message(role="system", content=growth_prompt))
         for step in self.thread.steps:
             msgs.append(Message(role="assistant", content=step.output))
         return msgs

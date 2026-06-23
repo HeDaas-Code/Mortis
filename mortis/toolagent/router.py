@@ -15,7 +15,7 @@ issue #64: 关键词路由已废弃。ToolAgent 现已注册为 ToolProtocol,
 
 from __future__ import annotations
 
-import re
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -86,6 +86,11 @@ class TaskRouter:
     """
 
     def __init__(self, keywords: dict[str, str] | None = None) -> None:
+        warnings.warn(
+            "TaskRouter 已废弃 (issue #64)，请使用 ToolRegistry + LLM tool calling。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.keywords = keywords if keywords is not None else dict(TOOL_KEYWORDS)
 
     def route(self, task: str) -> RouteDecision:
