@@ -46,8 +46,9 @@ _SENSITIVE_PATTERNS: tuple[tuple[str, str], ...] = (
      "> [!redacted]: [REDACTED — owner private callout]"),
     # 行内 emotion 标签: [emotion:joy] / [emotion:joy@0.8]
     (r"\[emotion:[^\]]+\]", "[emotion:REDACTED]"),
-    # 潜意识注释: %%subconscious%% ... %% / %%sub%%
-    (r"%%sub(?:conscious)?%%.*?%%(?:sub(?:conscious)?)?%%",
+    # 潜意识注释: %%subconscious%% ... %% / %%sub%% ... %%
+    # 接受 %%sub%% / %%subconscious%% + 对应的 %%/sub%% / %%/subconscious%% 终止符
+    (r"%%sub(?:conscious)?%%.*?%%/sub(?:conscious)?%%",
      "%%subconscious:REDACTED%%"),
     # frontmatter 情感字段: emotional_valence / emotional_arousal / dream_level
     (r"^(emotional_valence|emotional_arousal|dream_level):\s*[^\n]+$",
