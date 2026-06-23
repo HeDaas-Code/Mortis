@@ -1,16 +1,16 @@
 """Mortis toolagent — TaskRouter: 任务路由决策。
 
-⚠ 已知 bug (#64): 关键词路由是架构错误。ToolAgent 应该注册为 ToolProtocol,
-由 LLM 通过 tool calling 自发调用, 而不是用关键词 substring 匹配硬编码路由。
-#64 将删除本模块的关键词路由, 把 ToolAgent 注册到 ToolRegistry。
+issue #64: 关键词路由已废弃。ToolAgent 现已注册为 ToolProtocol,
+由 LLM 通过 tool calling 自发调用。
 
-当前实现 (将被替换):
-    关键词检测 (中文 case-insensitive substring):
-        读 / 读取        → VaultReadAgent
-        搜索 / 查找       → VaultSearchAgent
-        统计 / 计数       → VaultStatsAgent
-        解析 / 渲染       → MarkdownRenderAgent
-        现在几点 / 当前时间 → ClockAgent
+本模块保留用于向后兼容，但建议使用 ToolRegistry 进行工具调用。
+
+原关键词检测逻辑 (已废弃):
+    读 / 读取        → VaultReadAgent
+    搜索 / 查找       → VaultSearchAgent
+    统计 / 计数       → VaultStatsAgent
+    解析 / 渲染       → MarkdownRenderAgent
+    现在几点 / 当前时间 → ClockAgent
 """
 
 from __future__ import annotations

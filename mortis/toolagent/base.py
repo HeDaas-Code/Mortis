@@ -5,8 +5,7 @@ issue #25: 把 ``mortis.tools`` 中的 ``ToolProtocol`` 包装成可被 TaskRout
 不写 vault, 不读 seed。设计上可以调 LLM 做工具性任务 (摘要/分类/语义搜索),
 但 LLM 调用不带人格上下文。
 
-⚠ 已知 bug (#63): 基类当前没有 provider 字段, 子类也没有注入 provider 的途径。
-   5 个内置 agent 全是纯工具操作。#63 将重构基类 + 3 个 agent 加 LLM 能力。
+issue #63: 基类现已支持 provider 注入,子类可通过 ``_llm_generate()`` 调用 LLM。
 
 设计要点:
 - ``ToolResult`` (本模块) 与 ``mortis.tools.ToolResult`` 是两个独立 dataclass,
@@ -18,6 +17,7 @@ issue #25: 把 ``mortis.tools`` 中的 ``ToolProtocol`` 包装成可被 TaskRout
   ``tool.execute``。tool 抛任何异常 → 返回 ``ToolResult(success=False, error=str(e))``。
 - ``ToolAgentProtocol`` 让上层 (router / registry) 可以鸭子类型地接受任意 agent 实现,
   不必依赖具体类 (VaultReadAgent / MarkdownRenderAgent 等)。
+- ``ToolAgent._llm_generate()`` 提供统一的 LLM 调用接口,子类可按需使用。
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from mortis.provider.base import LLMProviderProtocol
 from mortis.tools.base import ToolProtocol, ToolResult as ToolLayerResult
 
 
@@ -72,21 +73,25 @@ class ToolAgent:
     字段:
     - ``agent_id``: 唯一标识,默认 = ``tool.name`` (e.g. ``"vault:read"``)。
     - ``tool``: 底层 ``ToolProtocol`` 实例。
+    - ``provider``: LLM provider (issue #63),可为 None (纯工具操作)。
     - ``timeout``: 预留超时参数 (秒)。当前实现不强制 — 留给 #26 接入。
     """
 
     agent_id: str
     tool: ToolProtocol
+    provider: LLMProviderProtocol | None
     timeout: int = 30
 
     def __init__(
         self,
         tool: ToolProtocol,
         agent_id: str | None = None,
+        provider: LLMProviderProtocol | None = None,
         timeout: int = 30,
     ) -> None:
         self.tool = tool
         self.agent_id = agent_id if agent_id is not None else tool.name
+        self.provider = provider
         self.timeout = timeout
 
     @classmethod
@@ -94,13 +99,34 @@ class ToolAgent:
         cls,
         tool: ToolProtocol,
         agent_id: str | None = None,
+        provider: LLMProviderProtocol | None = None,
         timeout: int = 30,
     ) -> "ToolAgent":
         """工厂方法 — 包任意 ``ToolProtocol`` 为 ``ToolAgent``。
 
         与 ``__init__`` 等价,只是显式表达"包装"语义,方便 router 代码阅读。
         """
-        return cls(tool=tool, agent_id=agent_id, timeout=timeout)
+        return cls(tool=tool, agent_id=agent_id, provider=provider, timeout=timeout)
+
+    def _llm_generate(self, prompt: str, system: str = "", **kwargs) -> str | None:
+        """调用 LLM 生成文本 (issue #63)。
+
+        若无 provider,返回 None。
+
+        Args:
+            prompt: 用户 prompt。
+            system: 可选系统提示词。
+            **kwargs: 透传给 provider.generate_text() 的额外参数。
+
+        Returns:
+            LLM 生成的文本,或 None (无 provider)。
+        """
+        if self.provider is None:
+            return None
+        try:
+            return self.provider.generate_text(prompt, system=system, **kwargs)
+        except Exception as e:  # noqa: BLE001
+            return None
 
     def execute(self, input: dict) -> ToolResult:
         """把 ``input`` dict 透传给 ``tool.execute(**input)``,翻译结果。

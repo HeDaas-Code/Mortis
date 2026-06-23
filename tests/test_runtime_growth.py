@@ -254,7 +254,8 @@ class TestGrowthInjectionIntoSystemMessage:
         self, master: MasterRuntime, vault: Vault
     ) -> None:
         vault.write_growth(_make_growth("g-1", body="关键经验"))
-        thread = master.create_thread("test")
+        # issue #59: 使用包含 growth body 关键词的 task 进行动态检索
+        thread = master.create_thread("关键经验")
         ctx = master.make_context(thread)
         msgs = ctx.messages_for_provider()
         # system[0] = tone
@@ -280,7 +281,8 @@ class TestGrowthInjectionIntoSystemMessage:
         self, master: MasterRuntime, vault: Vault
     ) -> None:
         vault.write_growth(_make_growth("g-1", body="重要经验"))
-        thread = master.create_thread("test")
+        # issue #59: 使用包含 growth body 关键词的 task 进行动态检索
+        thread = master.create_thread("重要经验")
         thread.add_step(StepRecord(
             step_id="step-1",
             step_type="think",
