@@ -42,8 +42,8 @@ class TestMakeDefaultRegistry:
         """vault 有值时应注册 ToolAgent。"""
         registry = make_default_registry(vault=vault)
         names = registry.names()
-        # 基础工具
-        assert "vault:read" in names
+        # 基础工具 (vault:read 已被 vault:read_agent 取代, 审计问题 3)
+        assert "vault:read" not in names
         assert "vault:list" in names
         assert "vault:write" in names
         assert "vault:exists" in names
@@ -72,8 +72,8 @@ class TestMakeDefaultRegistry:
         """include_agents=False 时不注册 ToolAgent。"""
         registry = make_default_registry(vault=vault, include_agents=False)
         names = registry.names()
-        # 只有基础工具
-        assert "vault:read" in names
+        # 只有基础工具 (vault:read 已被 vault:read_agent 取代, 审计问题 3)
+        assert "vault:read" not in names
         assert "vault:list" in names
         assert "vault:write" in names
         assert "vault:exists" in names
@@ -123,7 +123,8 @@ class TestToolRegistryWithAgents:
         registry = make_default_registry(vault=vault)
         schemas = registry.tool_schemas()
         names = [s["function"]["name"] for s in schemas]
-        assert "vault:read" in names
+        # vault:read 已被 vault:read_agent 取代 (审计问题 3)
+        assert "vault:read" not in names
         assert "vault:read_agent" in names
         assert "vault:search_agent" in names
         assert "vault:stats_agent" in names

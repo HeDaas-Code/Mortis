@@ -21,11 +21,12 @@ from mortis.toolagent import (
 
 
 class VaultReadToolAgent(ToolProtocol):
-    """vault:read — 通过 VaultReadAgent 读取文件 + 可选摘要。"""
+    """vault:read_agent — 通过 VaultReadAgent 读取文件 + 可选摘要。"""
 
     def __init__(self, vault: Vault, provider: LLMProviderProtocol | None = None) -> None:
         self.vault = vault
         self.provider = provider
+        self._agent = VaultReadAgent(vault=vault, provider=provider)
 
     @property
     def name(self) -> str:
@@ -71,8 +72,7 @@ class VaultReadToolAgent(ToolProtocol):
         summarize: bool = False,
         summary_length: int = 100,
     ) -> ToolResult:
-        agent = VaultReadAgent(vault=self.vault, provider=self.provider)
-        result = agent.execute({
+        result = self._agent.execute({
             "rel_path": rel_path,
             "resolve_links": resolve_links,
             "summarize": summarize,
@@ -87,11 +87,12 @@ class VaultReadToolAgent(ToolProtocol):
 
 
 class VaultSearchToolAgent(ToolProtocol):
-    """vault:search — 通过 VaultSearchAgent 搜索 vault。"""
+    """vault:search_agent — 通过 VaultSearchAgent 搜索 vault。"""
 
     def __init__(self, vault: Vault, provider: LLMProviderProtocol | None = None) -> None:
         self.vault = vault
         self.provider = provider
+        self._agent = VaultSearchAgent(vault=vault, provider=provider)
 
     @property
     def name(self) -> str:
@@ -147,8 +148,7 @@ class VaultSearchToolAgent(ToolProtocol):
         semantic: bool = False,
         top_k: int = 10,
     ) -> ToolResult:
-        agent = VaultSearchAgent(vault=self.vault, provider=self.provider)
-        result = agent.execute({
+        result = self._agent.execute({
             "query": query,
             "tags": tags,
             "traverse_links": traverse_links,
@@ -172,11 +172,12 @@ class VaultSearchToolAgent(ToolProtocol):
 
 
 class VaultStatsToolAgent(ToolProtocol):
-    """vault:stats — 通过 VaultStatsAgent 统计 vault。"""
+    """vault:stats_agent — 通过 VaultStatsAgent 统计 vault。"""
 
     def __init__(self, vault: Vault, provider: LLMProviderProtocol | None = None) -> None:
         self.vault = vault
         self.provider = provider
+        self._agent = VaultStatsAgent(vault=vault, provider=provider)
 
     @property
     def name(self) -> str:
@@ -210,8 +211,7 @@ class VaultStatsToolAgent(ToolProtocol):
         dimension: str | None = None,
         analyze: bool = False,
     ) -> ToolResult:
-        agent = VaultStatsAgent(vault=self.vault, provider=self.provider)
-        result = agent.execute({
+        result = self._agent.execute({
             "dimension": dimension,
             "analyze": analyze,
         })
@@ -239,6 +239,9 @@ class VaultStatsToolAgent(ToolProtocol):
 class MarkdownRenderToolAgent(ToolProtocol):
     """markdown:render — 通过 MarkdownRenderAgent 解析 markdown。"""
 
+    def __init__(self) -> None:
+        self._agent = MarkdownRenderAgent()
+
     @property
     def name(self) -> str:
         return "markdown:render"
@@ -264,8 +267,7 @@ class MarkdownRenderToolAgent(ToolProtocol):
         }
 
     def execute(self, content: str) -> ToolResult:
-        agent = MarkdownRenderAgent()
-        result = agent.execute({"content": content})
+        result = self._agent.execute({"content": content})
         if result.success:
             data = result.data
             lines = []
@@ -290,6 +292,7 @@ class ClockToolAgent(ToolProtocol):
 
     def __init__(self, vault: Vault) -> None:
         self.vault = vault
+        self._agent = ClockAgent(vault=vault)
 
     @property
     def name(self) -> str:
@@ -315,8 +318,7 @@ class ClockToolAgent(ToolProtocol):
         }
 
     def execute(self, timezone: str | None = None) -> ToolResult:
-        agent = ClockAgent(vault=self.vault)
-        result = agent.execute({"timezone": timezone})
+        result = self._agent.execute({"timezone": timezone})
         if result.success:
             data = result.data
             lines = [
