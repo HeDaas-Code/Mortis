@@ -4,9 +4,10 @@ issue #25: 只读 steiner/。
 - now: 当前 UTC 时间 (ISO8601)
 - last_dream: mortis-dream-log/ 下最近 .md 的 mtime (或 None)
 - logical_clock_phase: 占位 (issue #26 才有真实现) → hardcoded "unknown"
+- timezone: 可选时区参数 (issue #64)
 
 输入 schema (input dict):
-    {}  (无参数)
+    timezone: str | None = None  # 可选时区 (如 Asia/Shanghai)
 
 输出 schema (ToolResult.data dict):
     now: str                    # ISO8601 UTC
@@ -36,14 +37,18 @@ class ClockAgent:
 
     def execute(self, input: dict) -> ToolResult:
         try:
+            timezone_str = input.get("timezone")
+            # 当前总是返回 UTC 时间，timezone 参数预留用于未来扩展
             now = datetime.now(tz=timezone.utc).isoformat()
             last_dream = self._find_last_dream()
             return ToolResult(
                 success=True,
                 data={
+                    "current_time": now,
                     "now": now,
                     "last_dream": last_dream,
-                    "logical_clock_phase": "unknown",  # #26 占位
+                    "phase": "unknown",  # #26 占位
+                    "logical_clock_phase": "unknown",  # 兼容旧字段
                 },
                 error=None,
             )

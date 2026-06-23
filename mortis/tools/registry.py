@@ -1,10 +1,14 @@
-"""Mortis tools registry — 工具注册表。"""
+"""Mortis tools registry — 工具注册表。
+
+issue #64: ToolAgent 已注册为 ToolProtocol，由 LLM 通过 tool calling 自发调用。
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
 from .base import ToolProtocol, ToolResult
+from mortis.provider.base import LLMProviderProtocol
 
 
 class ToolRegistry:
@@ -55,8 +59,18 @@ class ToolRegistry:
 
 
 # 全局默认注册表生成器（工具实例来自 vault/runtime，需要外部组装）
-def make_default_registry(vault: "Vault | None" = None) -> ToolRegistry:
-    """生成默认工具注册表。vault 有值时注册 vault 工具。"""
+def make_default_registry(
+    vault: "Vault | None" = None,
+    provider: "LLMProviderProtocol | None" = None,
+    include_agents: bool = True,
+) -> ToolRegistry:
+    """生成默认工具注册表。
+
+    Args:
+        vault: Vault 实例（有值时注册 vault 工具）。
+        provider: LLM provider（有值时注入给 ToolAgent）。
+        include_agents: 是否注册 ToolAgent 包装器 (issue #64)。
+    """
     from mortis.vault import Vault as VaultClass
     registry = ToolRegistry()
     if vault is not None:
@@ -65,4 +79,20 @@ def make_default_registry(vault: "Vault | None" = None) -> ToolRegistry:
         registry.register(VaultListTool(vault))
         registry.register(VaultWriteTool(vault))
         registry.register(VaultExistsTool(vault))
+
+    # 注册 ToolAgent 包装器 (issue #64)
+    if include_agents and vault is not None:
+        from .agent_tool import (
+            VaultReadToolAgent,
+            VaultSearchToolAgent,
+            VaultStatsToolAgent,
+            MarkdownRenderToolAgent,
+            ClockToolAgent,
+        )
+        registry.register(VaultReadToolAgent(vault, provider=provider))
+        registry.register(VaultSearchToolAgent(vault, provider=provider))
+        registry.register(VaultStatsToolAgent(vault, provider=provider))
+        registry.register(MarkdownRenderToolAgent())
+        registry.register(ClockToolAgent(vault))
+
     return registry

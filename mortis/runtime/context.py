@@ -71,6 +71,40 @@ class RuntimeContext:
         items = self.search_growths(limit=max_items)
         return growth_system_prompt(items)
 
+    def growth_context_for_task(
+        self,
+        task: str,
+        dimension=None,
+        tag: str | None = None,
+        max_items: int = 5,
+    ) -> str:
+        """根据任务动态检索相关 growth 上下文 (issue #59)。
+
+        Args:
+            task: 当前任务描述，用于 query 检索。
+            dimension: 可选，按 dimension 过滤。
+            tag: 可选，按 tag 过滤。
+            max_items: 最大返回数量，默认 5。
+
+        Returns:
+            格式化后的 growth 上下文字符串，如果无相关 growth 则返回空字符串。
+        """
+        if not task:
+            return ""
+
+        # 使用 task 作为 query 进行动态检索
+        growths = self.search_growths(
+            query=task,
+            dimension=dimension,
+            tag=tag,
+            min_confidence=0.5,
+            limit=max_items,
+        )
+        if not growths:
+            return ""
+
+        return growth_system_prompt(growths)
+
     # ----- LLM 消息构造 -----
 
     def messages_for_provider(self) -> list["Message"]:
@@ -80,15 +114,18 @@ class RuntimeContext:
         - system[0]: seed tone
         - system[1] (可选): growth 摘要 — 在 tone 之后, step output 之前
         - assistant: 每条 Thread step 的 output（按顺序）
+
+        issue #59: growth 检索现在根据当前任务动态进行。
         """
         from mortis.provider import Message
         msgs: list[Message] = [
             Message(role="system", content=self.seed.get_dimension("tone")),
         ]
-        # issue #20: 注入 growth 段到第二条 system message
-        growth_prompt = self.growth_system_prompt()
-        if growth_prompt:
-            msgs.append(Message(role="system", content=growth_prompt))
+        # issue #59: 动态检索 growth
+        task_context = self.thread.task or ""
+        growths = self.search_growths(query=task_context, limit=5)
+        if growths:
+            msgs.append(Message(role="system", content=growth_system_prompt(growths)))
         for step in self.thread.steps:
             msgs.append(Message(role="assistant", content=step.output))
         return msgs

@@ -1,6 +1,10 @@
 """Mortis tools vault — vault 读写工具。
 
 issue #6 落地：白名单强制检查下沉到 Vault 层后，这里只透传 whitelist 参数。
+
+注意: VaultReadTool 等基础工具与 ToolAgent 包装器共存。
+- vault:read/vault:write 等是基础读写工具
+- VaultReadToolAgent (agent_tool.py) 是带 LLM 能力的增强版
 """
 
 from __future__ import annotations
