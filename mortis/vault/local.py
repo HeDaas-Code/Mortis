@@ -291,6 +291,27 @@ class Vault:
                 results.append(rel)
         return sorted(results)
 
+    def archive_growth(self, dimension: "Dimension", growth_id: str) -> bool:
+        """原子地把 growth 从 active 移到 archive/ (issue #39)。
+
+        用 rename(2) — 原子操作, 避免 copy + unlink 中间失败导致
+        同一 growth 同时存在于 active 和 archive。
+
+        Returns:
+            True 如果原文件存在且成功移动; False 如果原文件不存在。
+        """
+        from mortis.growth.vault_layout import growth_archive_rel, growth_rel
+
+        orig_rel = growth_rel(dimension, growth_id)
+        archive_rel = growth_archive_rel(dimension, growth_id)
+        orig_path = self._safe_path(orig_rel)
+        if not orig_path.exists():
+            return False
+        archive_path = self._safe_path(archive_rel)
+        archive_path.parent.mkdir(parents=True, exist_ok=True)
+        orig_path.rename(archive_path)
+        return True
+
 
 # ----- growth × Obsidian 集成辅助（issue #19）-----
 

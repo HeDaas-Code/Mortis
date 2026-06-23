@@ -254,6 +254,25 @@ class TestGrowthVault(unittest.TestCase):
         for dim_dir in DIMENSION_DIRS.values():
             self.assertTrue((growth_root / dim_dir).is_dir())
 
+    # ----- 13: archive_growth 原子移动 (issue #39) -----
+    def test_archive_growth_moves_file(self) -> None:
+        """archive_growth: 原文件移到 archive/, active 目录不再有。"""
+        from mortis.growth.vault_layout import growth_archive_rel
+        g = _make_growth(id="g-arch", dimension=Dimension.TONE)
+        self.vault.write_growth(g)
+
+        ok = self.vault.archive_growth(g.dimension, g.id)
+        self.assertTrue(ok)
+        # 原文件不存在
+        self.assertFalse(self.vault.exists(growth_rel(g.dimension, g.id)))
+        # archive 副本存在
+        self.assertTrue(self.vault.exists(growth_archive_rel(g.dimension, g.id)))
+
+    def test_archive_growth_missing_returns_false(self) -> None:
+        """archive_growth: 原文件不存在 → 返回 False (不抛异常)。"""
+        ok = self.vault.archive_growth(Dimension.TONE, "nonexistent")
+        self.assertFalse(ok)
+
 
 if __name__ == "__main__":
     unittest.main()
