@@ -71,76 +71,7 @@
 
 ### 依赖分层图
 
-```mermaid
-graph TD
-    subgraph L0["L0 基础层 (零内部依赖)"]
-        seed[seed<br/>人格核心]
-        clock[clock<br/>逻辑时钟]
-    end
-    subgraph L1["L1 认知数据层"]
-        growth[growth<br/>长期记忆]
-        steiner[steiner<br/>隐藏层 *]
-    end
-    subgraph L2["L2 存储层"]
-        vault[vault<br/>认知存储]
-    end
-    subgraph L3["L3 接口层"]
-        provider[provider<br/>LLM 抽象]
-        memory[memory<br/>会话上下文]
-    end
-    subgraph L4["L4 工具层"]
-        tools[tools<br/>LLM 工具]
-        toolagent[toolagent<br/>执行体]
-    end
-    subgraph L5["L5 运行时层"]
-        runtime[runtime<br/>依赖注入]
-    end
-    subgraph L6["L6 编排层"]
-        pipeline[pipeline<br/>主循环]
-    end
-    subgraph L7["L7 认知周期层"]
-        reflect[reflect<br/>反思]
-        dream[dream<br/>梦境]
-    end
-    subgraph L8["L8 入口层"]
-        cli[cli<br/>命令行]
-    end
-
-    growth --> seed
-    steiner --> growth
-    vault --> seed
-    vault --> growth
-    provider --> tools
-    memory --> vault
-    tools --> vault
-    tools --> provider
-    tools --> toolagent
-    toolagent --> provider
-    toolagent --> vault
-    runtime --> seed
-    runtime --> vault
-    runtime --> memory
-    runtime --> provider
-    runtime --> growth
-    pipeline --> provider
-    pipeline --> runtime
-    pipeline --> tools
-    pipeline --> memory
-    reflect --> growth
-    reflect --> memory
-    reflect --> provider
-    reflect --> vault
-    dream --> growth
-    dream --> memory
-    dream --> provider
-    dream --> reflect
-    dream --> vault
-    cli --> seed
-    cli --> vault
-    cli --> provider
-    cli --> runtime
-    cli --> pipeline
-```
+![Figure 1](images/diagram-01.png)
 
 > **Figure 1**: 包依赖分层图 — 自底向上 9 层，vault 为中枢（7 包依赖），growth 为次中枢（5 包依赖）
 
@@ -187,36 +118,7 @@ graph TD
 
 入口：`PipelineExecutor.run()` — `mortis/pipeline/executor.py:43`
 
-```mermaid
-flowchart TD
-    A["python -m mortis delegate '任务'"] --> B["cli/commands.py: cmd_delegate"]
-    B --> C["_build_master: load_seed → Vault → make_provider → MasterRuntime"]
-    C --> D["master.create_thread(task) → Thread(th-xxxxxxxx)"]
-    D --> E["make_default_registry(vault, provider) → ToolRegistry"]
-    E --> F["master.make_context(thread, tools) → RuntimeContext"]
-    F --> G["PipelineExecutor(ctx, tools).run() → PipelineResult"]
-
-    G --> H{"TaskRouter.route() LLM#1"}
-    H -->|"simple"| I["顺序执行 4 步"]
-    H -->|"complex/delegated"| J["_run_delegated()"]
-
-    subgraph I["Simple 路径: 4 步顺序"]
-        I1["ThinkStep.run() LLM#2"] --> I2["PlanStep.run() LLM#2"]
-        I2 --> I3["ActStep.run() LLM#3 + 工具循环"]
-        I3 --> I4["ReviewStep.run() LLM#2"]
-    end
-
-    subgraph J["Delegated 路径"]
-        J1["ThinkStep 分析"] --> J2["SubTemplate.from_seed() 注入 hash"]
-        J2 --> J3["SubRuntime + ActStep 执行"]
-        J3 --> J4["vault.write_sub_output() 暂存"]
-        J4 --> J5["ReviewGate.review() → Decision"]
-        J5 --> J6["ReviewGate.apply(whitelist) 落地"]
-    end
-
-    I4 --> K["_save_thread() 持久化"]
-    J6 --> K
-```
+![Figure 2](images/diagram-02.png)
 
 > **Figure 2**: 主循环调用链 — TaskRouter 路由后分 simple/delegated 两路径，ActStep 含工具调用循环
 
@@ -242,27 +144,7 @@ ActStep.run()                          [step.py:212]
 
 `DreamPipeline.run()` 按 `PHASES_BY_LEVEL` 顺序反射调用各 `phase_<name>()`。Light=4 phase / Medium=5 phase（+SIMULATE）/ Deep=7 phase（+ERODE+SEED_CHECK）。
 
-```mermaid
-flowchart LR
-    subgraph RECALL["RECALL phase"]
-        R1["读 sessions/YYYY-MM-DD/*.json<br/>k=5, days=2"] --> R2["score_emotion() LLM#5<br/>valence/arousal"]
-        R2 --> R3["emotion_weighted_sample<br/>w=|v|×a"]
-    end
-    subgraph ASSOC["ASSOCIATE phase"]
-        A1["recall_texts"] --> A2["associate() LLM#6<br/>找共同模式"]
-        A2 --> A3["body + tags"]
-    end
-    subgraph CRYST["CRYSTALLIZE phase"]
-        C1["infer_dimension()<br/>关键词匹配, 无LLM"] --> C2["make_candidate()<br/>Growth(conf=0.3)"]
-        C2 --> C3["vault.write_growth()<br/>→ mortis-growth/"]
-    end
-    subgraph RECON["RECONCILE phase"]
-        RE1["读 existing growths"] --> RE2["_detect_conflicts()<br/>关键词互斥对"]
-        RE2 --> RE3["写 conflicts/<br/>→ mortis-subconscious/"]
-    end
-
-    RECALL --> ASSOC --> CRYST --> RECON
-```
+![Figure 3](images/diagram-03.png)
 
 > **Figure 3**: Light Dream 4 phase 数据流 — session→emotion→associate→growth→conflict
 
@@ -343,31 +225,7 @@ Mortis 的"信号"是认知状态的可量化表达 — 从 session 情绪到 gr
 
 ### 信号流主链
 
-```mermaid
-flowchart TD
-    S["session (owner 对话)"] --> SE["score_emotion() LLM#5"]
-    SE --> EV["emotional_valence/arousal<br/>(valence -1~1, arousal 0~1)"]
-    EV --> CACHE["emotion cache<br/>key=session_path"]
-    EV --> EW["emotion_weight = |v| × a"]
-
-    EW --> RECALL["RECALL: emotion_weighted_sample<br/>高权重 session 优先采样"]
-    RECALL --> ASSOC["ASSOCIATE: LLM#6 找模式 → body"]
-    ASSOC --> CRYST["CRYSTALLIZE: make_candidate"]
-    CRYST --> GROWTH["Growth(confidence=0.3,<br/>emotional_*, dream_level)"]
-    GROWTH --> VAULT["vault.write_growth()<br/>→ mortis-growth/"]
-
-    VAULT --> OWNER["[owner 编辑 growth]"]
-    OWNER --> WATCHER["GrowthWatcher (watchdog)"]
-    WATCHER --> ACC["accumulate(dim, delta=0.15)"]
-    ACC --> UNEASE["UneaseState<br/>per_dimension: dict"]
-    UNEASE --> DECAY["decay(×0.85^days)"]
-    DECAY --> PROMPT["unease_prompt() 5 档<br/>→ system prompt 潜台词"]
-    PROMPT --> MORTIS["Mortis (不知 steiner 存在)"]
-
-    VAULT --> SEEDCHECK["SEED_CHECK: growth body 摘要<br/>→ LLM#7 drift"]
-    SEEDCHECK --> DRIFT["DriftReport"]
-    DRIFT --> NOTIFY["owner-notify.json<br/>(drift≥0.75)"]
-```
+![Figure 4](images/diagram-04.png)
 
 > **Figure 4**: 信号流主链 — session→emotion→growth→steiner→drift 完整闭环
 
@@ -394,43 +252,7 @@ Vault 安全纵深防御、Redact 覆盖矩阵、漏洞清单与 Provider 隔离
 
 ### Vault 安全层级（纵深防御）
 
-```mermaid
-flowchart TD
-    REQ["LLM/Agent 请求读 vault 文件"] --> L1
-
-    subgraph L1["L1: BLOCKED_PREFIXES (VaultReadAgent, #38)"]
-        L1A["normalize_rel_path() 栈式归一化"]
-        L1B["startswith 检查:<br/>mortis-steiner/ (#38)<br/>mortis-journal/sub-outputs/ (#80)"]
-        L1A --> L1B
-    end
-    L1 -->|"通过"| L2
-
-    subgraph L2["L2: 白名单强制检查 (VaultSecurity, #6)"]
-        L2A["_normalize() 消除 ../ 和 ./"]
-        L2B["前缀匹配 GROWTH_WHITELIST"]
-        L2A --> L2B
-    end
-    L2 -->|"通过"| L3
-
-    subgraph L3["L3: 路径遍历防御 (Vault._safe_path, S1/#11)"]
-        L3A["拒绝绝对路径 (startswith /)"]
-        L3B["resolve() + relative_to(root)"]
-        L3A --> L3B
-    end
-    L3 -->|"通过"| L4
-
-    subgraph L4["L4: Redact (ToolAgent 层, #73 / CRITICAL-1/2)"]
-        L4A["_redact_snippet() 过滤私密字段"]
-        L4B["fail-closed: 异常返回占位符"]
-        L4C["IGNORECASE + DOTALL + MULTILINE"]
-        L4A --> L4B --> L4C
-    end
-    L4 -->|"通过"| OK["✓ 文件内容返回"]
-
-    L1B -->|"拒绝"| DENY["✗ Access Denied"]
-    L2B -->|"拒绝"| DENY
-    L3B -->|"拒绝"| DENY
-```
+![Figure 5](images/diagram-05.png)
 
 > **Figure 6**: Vault 4 层纵深防御 — 任一层失败即拦截
 
@@ -520,56 +342,7 @@ flowchart TD
 python -m mortis delegate "帮我整理本周的 growth 并总结 identity 维度的变化" --provider auto
 ```
 
-```mermaid
-sequenceDiagram
-    participant O as Owner
-    participant CLI as CLI
-    participant PE as PipelineExecutor
-    participant TR as TaskRouter
-    participant RC as RuntimeContext
-    participant V as Vault
-    participant LLM as LLM Provider
-    participant TA as ToolAgent
-    participant RG as ReviewGate
-
-    O->>CLI: delegate "整理 growth..."
-    CLI->>PE: run()
-
-    PE->>TR: route()
-    TR->>RC: messages_for_provider()
-    RC->>V: search_growths(query=task, min_conf=0.5)
-    V-->>RC: growths[] (identity 维度)
-    RC-->>TR: msgs[tone + growth + history]
-    TR->>LLM: generate(msgs) ★LLM#1
-    LLM-->>TR: "complex, delegate"
-
-    PE->>PE: _run_delegated()
-    Note over PE: ThinkStep → LLM#2 分析任务
-    PE->>TA: SubRuntime + ActStep
-
-    loop ActStep 工具循环 (max 5)
-        TA->>LLM: generate(msgs + tools) ★LLM#3
-        LLM-->>TA: "[TOOL: vault:search_agent {query:identity}]"
-        TA->>V: search_agent.execute()
-        Note over TA,V: _redact_snippet() 后发 LLM ★LLM#10
-        V-->>TA: matches[] (已 redact)
-        TA-->>LLM: tool result 回传 ★LLM#4
-    end
-
-    PE->>V: write_sub_output(sub_id, output)
-    Note over V: 暂存 mortis-journal/sub-outputs/
-
-    PE->>RG: review(sub_output)
-    RG->>RG: 启发式判断
-    RG-->>PE: ADOPT
-
-    PE->>RG: apply(ADOPT, whitelist)
-    Note over RG: _safe_write() 强制白名单
-    RG->>V: write_growth() → mortis-growth/
-
-    PE->>CLI: PipelineResult
-    CLI-->>O: "已整理 identity 维度 growth..."
-```
+![Figure 6](images/diagram-06.png)
 
 > **Figure 8**: 复杂任务委派完整信息流转 — 从 owner 输入到 growth 落地
 
@@ -577,42 +350,7 @@ sequenceDiagram
 
 clock 进入 DREAM_LIGHT (23:00-06:00) → `LightDreamer.run()`
 
-```mermaid
-sequenceDiagram
-    participant C as Clock (23:00)
-    participant LD as LightDreamer
-    participant V as Vault
-    participant LLM as LLM
-    participant SE as score_emotion
-
-    C->>LD: run()
-
-    Note over LD: Phase 1: RECALL
-    LD->>V: list sessions/2026-06-2X/
-    V-->>LD: session-a.json, session-b.json
-    LD->>SE: score_emotion(session-a) ★LLM#5
-    SE->>LLM: generate_text(session 全文)
-    Note over SE,LLM: ⚠️ P3: session 未 redact
-    LLM-->>SE: valence=0.6, arousal=0.7
-    SE-->>LD: weight=0.42
-    LD->>LD: emotion_weighted_sample(k=5)
-
-    Note over LD: Phase 2: ASSOCIATE
-    LD->>LLM: generate_text(recall_texts) ★LLM#6
-    Note over LD,LLM: ⚠️ P4: session 文本未 redact
-    LLM-->>LD: body="本周 identity 有变化..."
-
-    Note over LD: Phase 3: CRYSTALLIZE
-    LD->>LD: infer_dimension(body) → IDENTITY
-    LD->>LD: make_candidate(conf=0.3)
-    LD->>V: write_growth(candidate)
-
-    Note over LD: Phase 4: RECONCILE
-    LD->>V: list_growths(IDENTITY)
-    V-->>LD: existing growths
-    LD->>LD: _detect_conflicts()
-    LD->>V: write conflicts/
-```
+![Figure 7](images/diagram-07.png)
 
 > **Figure 9**: Dream 周期信息流 — 4 phase 从 session 到 growth 到 conflict
 
@@ -620,18 +358,7 @@ sequenceDiagram
 
 owner 手动编辑 growth 文件 → GrowthWatcher 检测 → unease 注入
 
-```mermaid
-flowchart LR
-    EDIT["owner 编辑<br/>mortis-growth/identity/self.md"] --> WATCH["GrowthWatcher<br/>(watchdog 监听)"]
-    WATCH --> ACC["accumulate(IDENTITY, 0.15)"]
-    ACC --> STATE["UneaseState<br/>per_dimension[IDENTITY]=0.15"]
-    STATE --> DECAY["decay(×0.85^days)<br/>每日衰减"]
-    DECAY --> PROMPT["unease_prompt()<br/>0.15 → '有些东西不太对...'"]
-    PROMPT --> INJECT["注入 system prompt<br/>(潜台词, 非显式指令)"]
-    INJECT --> MORTIS["Mortis 下次对话<br/>语气微妙变化"]
-    MORTIS --> NEXT["owner 察觉变化<br/>→ 可能继续编辑"]
-    NEXT -->|"drift≥0.75"| NOTIFY["owner-notify.json<br/>通知 owner"]
-```
+![Figure 8](images/diagram-08.png)
 
 > **Figure 10**: Steiner 隐藏层触发链 — owner 编辑→unease→潜台词注入→drift 通知
 
