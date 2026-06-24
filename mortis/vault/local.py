@@ -312,6 +312,21 @@ class Vault:
         orig_path.rename(archive_path)
         return True
 
+    def delete_growth(self, rel_path: str) -> bool:
+        """删除 growth 文件（issue #47 维度压缩用）。
+
+        破坏性操作 — 直接 unlink, 不进 archive/。
+        复用 self._safe_path 做路径遍历防御（与 discard_sub_output 一致）。
+
+        Returns:
+            True 如果文件存在且成功删除; False 如果文件不存在（不抛异常）。
+        """
+        path = self._safe_path(rel_path)
+        if path.exists():
+            path.unlink()
+            return True
+        return False
+
 
 # ----- growth × Obsidian 集成辅助（issue #19）-----
 
