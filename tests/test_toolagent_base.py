@@ -120,7 +120,6 @@ class TestToolAgentFactory:
 
 
 # ============================================================
-<<<<<<< HEAD
 # _llm_generate (issue #70 MEDIUM-E)
 # ============================================================
 
@@ -253,7 +252,9 @@ class TestToolAgentLlmGenerate:
         agent = self._build(provider=provider)
         agent._llm_generate("hi", system="you are a search reranker")
         assert provider.calls[0][1] == "you are a search reranker"
-=======
+
+
+# ============================================================
 # issue #72 MEDIUM-G — TaskRouter 已删除, 不应再导出
 # ============================================================
 
@@ -296,4 +297,3 @@ class TestTaskRouterRemoved:
         # 验证是不同类 (来自 mortis.pipeline 而非 mortis.toolagent)
         assert PipelineTaskRouter.__module__ == "mortis.pipeline.router"
         assert PipelineRouteDecision.__module__ == "mortis.pipeline.router"
->>>>>>> 82128b5 (test(toolagent): TaskRouter 删除回归保护 (issue #72 MEDIUM-G))
