@@ -19,10 +19,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from mortis.dream.drift_log import log_drift
 from mortis.growth.model import Dimension
 from mortis.provider.base import LLMProviderProtocol
 from mortis.redact import redact_snippet
 from mortis.seed import Seed
+from mortis.vault import Vault
 
 
 _logger = logging.getLogger(__name__)
@@ -139,6 +141,7 @@ def seed_check(
     *,
     threshold: float = DEFAULT_DRIFT_THRESHOLD,
     per_dim_alert: float = PER_DIM_ALERT_THRESHOLD,
+    vault: Vault | None = None,
 ) -> DriftReport:
     """计算 growth 层与 seed 的距离。
 
@@ -148,6 +151,8 @@ def seed_check(
         provider: LLM provider
         threshold: 总 drift 阈值,超过 → needs_owner_notify (默认 0.7)
         per_dim_alert: 单维度 drift 阈值,超过 → per_dim_alerts[dim]=True (默认 0.5)
+        vault: 可选 vault。传入则记录本次 drift 到 drift-log.json (issue #48),
+            用于后续计算误报率。None = 不记录 (保持向后兼容)。
 
     Returns:
         DriftReport — 含 per-dim drift + total + alerts + raw。
@@ -155,6 +160,9 @@ def seed_check(
     issue #84 CRITICAL: growth_summary 来自 growth body 前 200 字摘要,
     可能含 dream callout / [emotion:...] / %%subconscious%% 等私密字段,
     发 LLM 前必须 redact 脱敏 (HARNESS.md '数据不外流' 原则)。
+
+    issue #48: 传入 vault 时, 在返回 DriftReport 前调用 log_drift() 记录历史,
+    供 owner 校准阈值 / 计算误报率。日志写入失败不阻断 seed_check。
     """
     seven_dims = ", ".join(d.value for d in Dimension)
     seed_text = _seed_to_text(seed)
@@ -174,7 +182,7 @@ def seed_check(
 
     alerts = {d: (v > per_dim_alert) for d, v in per_dim.items()}
 
-    return DriftReport(
+    report = DriftReport(
         per_dimension=per_dim,
         total_drift=total,
         per_dim_alerts=alerts,
@@ -182,6 +190,21 @@ def seed_check(
         threshold=threshold,
         raw_response=raw,
     )
+
+    # issue #48: 记录 drift 历史到 drift-log.json, 供 owner 校准阈值 / 计算误报率。
+    # 日志写入失败不阻断 seed_check (与 dream_log 一致: 写日志失败不阻断梦本身)。
+    if vault is not None:
+        try:
+            log_drift(
+                vault,
+                drift_score=report.total_drift,
+                threshold=report.threshold,
+                notified=report.needs_owner_notify,
+            )
+        except Exception as e:
+            _logger.warning("seed_check: log_drift failed: %s", e)
+
+    return report
 
 
 def _seed_to_text(seed: Seed) -> str:

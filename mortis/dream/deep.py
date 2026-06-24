@@ -285,6 +285,7 @@ class DeepDreamer(DreamPipeline):
                 growth_summary=summary,
                 provider=self.provider,
                 threshold=self.drift_threshold,
+                vault=self.vault,
             )
         except Exception as e:
             _logger.warning("deep SEED_CHECK failed: %s", e)
