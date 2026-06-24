@@ -109,11 +109,12 @@ class TestParser:
         assert args.vault == "vault"
 
     def test_commands_dict_has_new_entries(self) -> None:
-        """COMMANDS dict 包含 dream / reflect / status。"""
+        """COMMANDS dict 包含 dream / reflect / status / daemon。"""
         assert "dream" in COMMANDS
         assert "reflect" in COMMANDS
         assert "status" in COMMANDS
-        assert len(COMMANDS) == 11  # 8 原有 + 3 新增
+        assert "daemon" in COMMANDS
+        assert len(COMMANDS) == 12  # 8 原有 + 3 (issue #56) + 1 (issue #60)
 
 
 # ============================================================

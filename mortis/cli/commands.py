@@ -230,6 +230,23 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_daemon(args: argparse.Namespace) -> int:
+    """启动 daemon 模式。
+
+    issue #60: Mortis 作为常驻进程运行，按 clock phase 自动触发
+    reflect/dream/erode。阻塞直到 SIGINT/SIGTERM。
+    """
+    from mortis.cli.daemon import MortisDaemon
+
+    daemon = MortisDaemon(
+        vault_path=args.vault,
+        provider_kind=args.provider,
+        seed_path=args.seed,
+    )
+    daemon.run()  # 阻塞
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mortis",
@@ -321,6 +338,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_status = sub.add_parser("status", help="查看当前状态")
     p_status.add_argument("--vault", default="vault", help="vault 根目录")
 
+    # daemon (issue #60: 常驻进程模式)
+    p_daemon = sub.add_parser("daemon", help="启动 daemon 常驻进程")
+    p_daemon.add_argument("--vault", default="vault", help="vault 根目录")
+    p_daemon.add_argument("--seed", default="seed.md", help="seed 文件路径")
+    p_daemon.add_argument(
+        "--provider", default="auto", choices=["auto", "minimax", "mock"],
+        help="LLM provider（default: auto）",
+    )
+
     return parser
 
 
@@ -336,6 +362,7 @@ COMMANDS = {
     "dream": cmd_dream,
     "reflect": cmd_reflect,
     "status": cmd_status,
+    "daemon": cmd_daemon,
 }
 
 
