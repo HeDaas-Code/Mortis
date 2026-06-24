@@ -105,6 +105,26 @@ class RuntimeContext:
 
         return growth_system_prompt(growths)
 
+    # ----- steiner unease 注入 (issue #57) -----
+
+    def unease_prompt_for_injection(self) -> str:
+        """读 mortis-steiner/unease.json → decay → unease_prompt。
+
+        静默失败：任何异常返回 ''（steiner 是隐藏层，不能干扰主流程）。
+        不写回 decay 结果（只读不写，写由 watcher 回调负责）。
+
+        Returns:
+            注入到 system prompt 的潜台词文本。空串表示不注入。
+        """
+        try:
+            from mortis.steiner import load_unease, decay, unease_prompt
+            from datetime import datetime, timezone
+            state = load_unease(self.vault)
+            state = decay(state, datetime.now(tz=timezone.utc))
+            return unease_prompt(state)
+        except Exception:
+            return ""
+
     # ----- LLM 消息构造 -----
 
     def messages_for_provider(self) -> list["Message"]:
@@ -112,15 +132,21 @@ class RuntimeContext:
 
         重建完整对话历史 (issue #20 增量):
         - system[0]: seed tone
-        - system[1] (可选): growth 摘要 — 在 tone 之后, step output 之前
+        - system[1] (可选): unease 潜台词 — steiner 隐藏层 (issue #57)
+        - system[2] (可选): growth 摘要 — 在 tone 之后, step output 之前
         - assistant: 每条 Thread step 的 output（按顺序）
 
+        issue #57: unease 注入在 tone 之后、growth 之前（steiner 隐藏层）。
         issue #59: growth 检索现在根据当前任务动态进行。
         """
         from mortis.provider import Message
         msgs: list[Message] = [
             Message(role="system", content=self.seed.get_dimension("tone")),
         ]
+        # issue #57: 注入 unease 潜台词（steiner 隐藏层）
+        unease_text = self.unease_prompt_for_injection()
+        if unease_text:
+            msgs.append(Message(role="system", content=unease_text))
         # issue #59: 动态检索 growth — 调用 growth_context_for_task 统一入口
         task_context = self.thread.task or ""
         growth_prompt = self.growth_context_for_task(task_context)
