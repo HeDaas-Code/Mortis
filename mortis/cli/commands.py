@@ -230,6 +230,24 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_goodnight(args: argparse.Namespace) -> int:
+    """owner「晚安」— 执行完整夜间认知周期。
+
+    issue #61: owner 主动触发 REFLECT → DREAM_LIGHT → (可选 DREAM_DEEP) → ERODE。
+    """
+    from mortis.cli.goodnight import run_goodnight
+    results = run_goodnight(
+        vault_path=args.vault,
+        provider_kind=args.provider,
+        seed_path=args.seed,
+        deep=args.deep,
+    )
+    for phase, ok in results.items():
+        status = "✓" if ok else "✗"
+        print(f"  {phase}: {status}")
+    return 0 if all(results.values()) else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mortis",
@@ -321,6 +339,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_status = sub.add_parser("status", help="查看当前状态")
     p_status.add_argument("--vault", default="vault", help="vault 根目录")
 
+    # goodnight (issue #61: owner「晚安」触发完整夜间认知周期)
+    p_goodnight = sub.add_parser(
+        "goodnight", help="owner「晚安」— 执行完整夜间认知周期 (REFLECT→DREAM→ERODE)",
+    )
+    p_goodnight.add_argument(
+        "--deep", action="store_true",
+        help="执行深度梦境 (DREAM_DEEP + drift 检查)",
+    )
+    p_goodnight.add_argument("--vault", default="vault", help="vault 根目录")
+    p_goodnight.add_argument("--seed", default="seed.md", help="seed 文件路径")
+    p_goodnight.add_argument(
+        "--provider", default="auto", choices=["auto", "minimax", "mock"],
+        help="LLM provider（default: auto）",
+    )
+
     return parser
 
 
@@ -336,6 +369,7 @@ COMMANDS = {
     "dream": cmd_dream,
     "reflect": cmd_reflect,
     "status": cmd_status,
+    "goodnight": cmd_goodnight,
 }
 
 
