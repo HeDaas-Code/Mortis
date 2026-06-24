@@ -38,20 +38,26 @@ _logger = logging.getLogger(__name__)
 # 设计: HARNESS.md '数据不外流' 原则, growth body 含 owner 私密信息
 # (emotional_*, dream_level, subconscious, dream callouts) 不应被外部 LLM 看到
 _SENSITIVE_PATTERNS: tuple[tuple[str, str], ...] = (
-    # Obsidian callout: > [!dream] ... 整段替换为占位符
-    (r"> \[!dream\][^\n]*(?:\n(?:[ \t]*>[^\n]*|\s*\n))*(?=\n\n|\Z)",
+    # Obsidian callout: > [!dream] ... (支持嵌套 > > [!dream] + 同段相邻 > [!secret])
+    # round 2 设计: 续行用 (?:[ ]{0,3}>(?:[ \t]*>)*[ \t]*)(?!\s*\[!) 严格排除 "下一行是 callout"
+    # 防止 dream 段把紧跟的 secret 段吞掉
+    (r"(?:[ ]{0,3}>(?:[ \t]*>)*[ \t]*)\[!dream\][^\n]*(?:\n(?:[ ]{0,3}>(?:[ \t]*>)*[ \t]*)(?!\s*\[!)[^\n]*)*",
      "> [!dream]: [REDACTED — owner private dream content]"),
-    # Obsidian callout: > [!warning] / > [!secret] / > [!private]
-    (r"> \[!(?:warning|secret|private|confidential)\][^\n]*(?:\n(?:[ \t]*>[^\n]*|\s*\n))*(?=\n\n|\Z)",
+    # Obsidian callout: > [!warning] / > [!secret] / > [!private] / > [!confidential]
+    (r"(?:[ ]{0,3}>(?:[ \t]*>)*[ \t]*)\[!(?:warning|secret|private|confidential)\][^\n]*(?:\n(?:[ ]{0,3}>(?:[ \t]*>)*[ \t]*)(?!\s*\[!)[^\n]*)*",
      "> [!redacted]: [REDACTED — owner private callout]"),
     # 行内 emotion 标签: [emotion:joy] / [emotion:joy@0.8]
     (r"\[emotion:[^\]]+\]", "[emotion:REDACTED]"),
     # 潜意识注释: %%subconscious%% ... %% / %%sub%% ... %%
     # 接受 %%sub%% / %%subconscious%% + 对应的 %%/sub%% / %%/subconscious%% 终止符
-    (r"%%sub(?:conscious)?%%.*?%%/sub(?:conscious)?%%",
+    # round 2: 加 fallback 分支支持无终止符 (到 EOF)
+    (r"%%sub(?:conscious)?%%[\s\S]*?%%/sub(?:conscious)?%%",
      "%%subconscious:REDACTED%%"),
+    (r"%%sub(?:conscious)?%%[\s\S]*$",
+     "%%subconscious:REDACTED%% (unclosed)"),
     # frontmatter 情感字段: emotional_valence / emotional_arousal / dream_level
-    (r"^(emotional_valence|emotional_arousal|dream_level):\s*[^\n]+$",
+    # round 2: 去掉 ^ 锚点, 允许行内出现 (如 YAML 嵌套)
+    (r"(emotional_valence|emotional_arousal|dream_level):\s*[^\n]+",
      r"\1: REDACTED"),
 )
 
@@ -136,7 +142,7 @@ class VaultSearchAgent:
                         matches.append({
                             "rel_path": rel,
                             "title": g.id,
-                            "snippet": _snippet(g.body, q),
+                            "snippet": _snippet(g.body, q, redact=self.redact_sensitive),
                             "score": 0.0,
                         })
             else:
@@ -321,14 +327,23 @@ SUMMARY: <对相关文档的简短摘要>
         return dict(graph)
 
 
-def _snippet(body: str, query: str, context: int = 30) -> str:
-    """截 query 前后 30 字符做 snippet。"""
+def _snippet(body: str, query: str, context: int = 30, redact: bool = True) -> str:
+    """截 query 前后 30 字符做 snippet。
+
+    issue #73 round 2 C-4: 默认 redact=True, 截取 snippet 时同步 redact 私密字段。
+    即使无 semantic rerank, matches[].snippet 也会被 VaultSearchToolAgent 拼入
+    ToolResult.data 返回上层 agent LLM, 也必须 redact (HARNESS.md '数据不外流')。
+    """
     idx = body.lower().find(query)
     if idx < 0:
-        return body[:60]
-    start = max(0, idx - context)
-    end = min(len(body), idx + len(query) + context)
-    return body[start:end]
+        raw = body[:60]
+    else:
+        start = max(0, idx - context)
+        end = min(len(body), idx + len(query) + context)
+        raw = body[start:end]
+    if redact:
+        return _redact_snippet(raw)
+    return raw
 
 
 def _redact_snippet(text: str) -> str:
@@ -345,7 +360,8 @@ def _redact_snippet(text: str) -> str:
 
     设计:
     - 函数式 (无副作用), 易于测试
-    - 失败安全: re.sub 任何异常 → 返回原文 (宁可不 redact, 也不抛错打断 LLM 流程)
+    - round 2 H-3 fail-closed: re.sub 任何异常 → 返回 [REDACTED — redact failed]
+      (宁可不展示内容, 也不 fail-open 泄漏私密字段)
     - 占位符含语义 (REDACTED — owner private dream content) 便于 LLM 理解
     """
     if not text:
@@ -354,12 +370,11 @@ def _redact_snippet(text: str) -> str:
         for pattern, replacement in _SENSITIVE_PATTERNS:
             text = re.sub(pattern, replacement, text, flags=re.DOTALL | re.MULTILINE)
         return text
-    except Exception as e:  # noqa: BLE001 — redact 失败不阻断搜索
+    except Exception as e:  # noqa: BLE001 — redact 失败: fail-closed, 不返回原文
         _logger.warning(
-            "redact_snippet failed, returning original text: %s",
-            e,
+            "redact_snippet failed, returning fail-closed placeholder: %s", e,
         )
-        return text
+        return "[REDACTED — redact failed, content withheld]"
 
 
 def _resolve_link(target: str, from_rel: str) -> str | None:
