@@ -21,6 +21,7 @@ import re
 from typing import Any
 
 from mortis.provider.base import LLMProviderProtocol
+from mortis.redact import redact_snippet
 
 
 # 模块日志 — 配 log warning 即可
@@ -82,7 +83,12 @@ def score_emotion(
     # 不走 str.format — session_text 里若含 `{` 会被当占位符(典型场景:JSON 测试
     # fixture 喂入带花括号的 LLM 响应会破坏 prompt 自身)。
     text = session_text or "(empty)"
-    prompt = _EMOTION_PROMPT.replace("{session_text}", text)
+    # issue #86: 发 LLM 前 redact owner 私密字段 (dream callouts / emotion 标签 /
+    # subconscious / emotional_*), 防止 session 全文泄漏给外部 LLM。
+    # 复用共享模块 mortis.redact.redact_snippet, 保证所有 LLM 入口 redact 一致
+    # (HARNESS.md '数据不外流' 原则)。
+    safe_text = redact_snippet(text)
+    prompt = _EMOTION_PROMPT.replace("{session_text}", safe_text)
     raw = provider.generate_text(prompt)
     valence, arousal = _parse_emotion_response(raw)
     valence, arousal = _clamp(valence, arousal)

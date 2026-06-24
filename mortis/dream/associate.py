@@ -17,6 +17,7 @@ import re
 from typing import Any
 
 from mortis.provider.base import LLMProviderProtocol
+from mortis.redact import redact_snippet
 
 
 _logger = logging.getLogger(__name__)
@@ -96,7 +97,12 @@ def associate(
     if not sessions_text:
         return {"body": "(no sessions)", "tags": []}
 
-    formatted = _format_sessions(sessions_text)
+    # issue #86: 发 LLM 前对每条 recall_text 逐个 redact owner 私密字段
+    # (dream callouts / emotion 标签 / subconscious / emotional_*),
+    # 防止 session 内容泄漏给外部 LLM。复用共享模块 mortis.redact.redact_snippet,
+    # 保证所有 LLM 入口 redact 一致 (HARNESS.md '数据不外流' 原则)。
+    safe_sessions = [redact_snippet(t) for t in sessions_text]
+    formatted = _format_sessions(safe_sessions)
     # 用 .replace 不用 .format — 避免 session_text 里 JSON 花括号触 KeyError
     prompt = _ASSOCIATE_PROMPT.replace("{n}", str(len(sessions_text))).replace(
         "{sessions_text}", formatted
