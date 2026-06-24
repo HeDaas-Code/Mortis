@@ -1,4 +1,4 @@
-"""Mortis LLM provider — 支持 mock / minimax。"""
+"""Mortis LLM provider — 支持 mock / minimax + 注册表扩展 (issue #45)。"""
 
 from __future__ import annotations
 
@@ -9,8 +9,18 @@ from .base import (
 )
 from .mock import MockProvider
 from .minimax import MinimaxProvider, MinimaxAPIError, MinimaxAuthError
-from .registry import make_provider
+from .registry import (
+    get_provider,
+    list_providers,
+    make_provider,
+    register_provider,
+)
+from .router import configure_routing, get_provider_for_task
 from mortis.tools.base import ToolResult
+
+# issue #45: 自动注册内置 provider 工厂 — 注册表模式, 便于按名称扩展新 provider
+register_provider("mock", MockProvider)
+register_provider("minimax", MinimaxProvider)
 
 __all__ = [
     "LLMProviderProtocol",
@@ -21,5 +31,12 @@ __all__ = [
     "MinimaxProvider",
     "MinimaxAPIError",
     "MinimaxAuthError",
+    # 注册表 (issue #45)
     "make_provider",
+    "register_provider",
+    "get_provider",
+    "list_providers",
+    # 任务路由 (issue #45)
+    "configure_routing",
+    "get_provider_for_task",
 ]
