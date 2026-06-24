@@ -57,7 +57,8 @@ _SENSITIVE_PATTERNS: tuple[tuple[str, str], ...] = (
      "%%subconscious:REDACTED%% (unclosed)"),
     # frontmatter 情感字段: emotional_valence / emotional_arousal / dream_level
     # round 2: 去掉 ^ 锚点, 允许行内出现 (如 YAML 嵌套)
-    (r"(emotional_valence|emotional_arousal|dream_level):\s*[^\n]+",
+    # 审计 CRITICAL-2: \s*:\s* 允许冒号前后空格 (emotional_valence : 0.8 绕过)
+    (r"(emotional_valence|emotional_arousal|dream_level)\s*:\s*[^\n]+",
      r"\1: REDACTED"),
 )
 
@@ -368,7 +369,9 @@ def _redact_snippet(text: str) -> str:
         return text
     try:
         for pattern, replacement in _SENSITIVE_PATTERNS:
-            text = re.sub(pattern, replacement, text, flags=re.DOTALL | re.MULTILINE)
+            # 审计 CRITICAL-2: 加 IGNORECASE — Obsidian callout / 标签大小写不敏感,
+            # 原 redact 仅匹配小写, [!DREAM] / [Emotion:joy] / %%SUB%% / Emotional_Valence 等大小写变体绕过泄漏
+            text = re.sub(pattern, replacement, text, flags=re.DOTALL | re.MULTILINE | re.IGNORECASE)
         return text
     except Exception as e:  # noqa: BLE001 — redact 失败: fail-closed, 不返回原文
         _logger.warning(

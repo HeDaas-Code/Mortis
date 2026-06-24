@@ -291,6 +291,75 @@ Normal ending text."""
         assert "Normal ending text" in out
 
 
+class TestRedactCaseInsensitive:
+    """审计 CRITICAL-2 回归: redact 必须大小写不敏感。
+
+    Obsidian callout / 标签语法本身大小写不敏感, 攻击者 (或 owner 笔误)
+    用 [!DREAM] / [Emotion:joy] / %%SUB%% / Emotional_Valence 等大小写变体
+    可绕过原仅匹配小写的正则, 导致私密数据发给外部 LLM。
+    本测试类为反断言: 任一大小写变体泄漏 → 立即失败。
+    """
+
+    def test_dream_callout_uppercase(self):
+        """> [!DREAM] 大写绕过。"""
+        out = _redact_snippet("> [!DREAM] my secret dream")
+        assert "my secret dream" not in out
+        assert "REDACTED" in out
+
+    def test_dream_callout_mixed_case(self):
+        """> [!Dream] 混合大小写绕过。"""
+        out = _redact_snippet("> [!Dream] hidden content")
+        assert "hidden content" not in out
+        assert "REDACTED" in out
+
+    def test_secret_callout_uppercase(self):
+        """> [!SECRET] 大写绕过。"""
+        out = _redact_snippet("> [!SECRET] private data")
+        assert "private data" not in out
+        assert "REDACTED" in out
+
+    def test_emotion_tag_uppercase(self):
+        """[Emotion:joy] 大写绕过。"""
+        out = _redact_snippet("[Emotion:joy] feeling today")
+        assert "joy" not in out
+        assert "REDACTED" in out
+
+    def test_emotion_tag_all_uppercase(self):
+        """[EMOTION:joy] 全大写绕过。"""
+        out = _redact_snippet("[EMOTION:joy] feeling")
+        assert "joy" not in out
+        assert "REDACTED" in out
+
+    def test_subconscious_uppercase(self):
+        """%%SUB%% 大写绕过。"""
+        out = _redact_snippet("%%SUB%% hidden thought %%/SUB%%")
+        assert "hidden thought" not in out
+        assert "REDACTED" in out
+
+    def test_subconscious_mixed_case(self):
+        """%%Subconscious%% 混合大小写绕过。"""
+        out = _redact_snippet("%%Subconscious%% secret %%/Subconscious%%")
+        assert "secret" not in out
+        assert "REDACTED" in out
+
+    def test_frontmatter_field_uppercase(self):
+        """Emotional_Valence: 0.8 大写绕过。"""
+        out = _redact_snippet("Emotional_Valence: 0.8")
+        assert "0.8" not in out
+        assert "REDACTED" in out
+
+    def test_frontmatter_field_space_before_colon(self):
+        """emotional_valence : 0.8 冒号前空格绕过。"""
+        out = _redact_snippet("emotional_valence : 0.8")
+        assert "0.8" not in out
+        assert "REDACTED" in out
+
+    def test_dream_level_uppercase(self):
+        """DREAM_LEVEL: 5 大写绕过。"""
+        out = _redact_snippet("DREAM_LEVEL: 5")
+        assert "5" not in out or "REDACTED" in out
+
+
 class TestVaultSearchAgentRedactSensitive:
     """VaultSearchAgent.redact_sensitive 参数控制 LLM prompt 数据流。"""
 
