@@ -22,11 +22,14 @@ issue #63: 基类现已支持 provider 注入,子类可通过 ``_llm_generate()`
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from mortis.provider.base import LLMProviderProtocol
 from mortis.tools.base import ToolProtocol, ToolResult as ToolLayerResult
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -119,13 +122,35 @@ class ToolAgent:
             **kwargs: 透传给 provider.generate_text() 的额外参数。
 
         Returns:
-            LLM 生成的文本,或 None (无 provider)。
+            LLM 生成的文本,或 None (无 provider 或降级失败)。
+
+        失败处理 (issue #70 MEDIUM-E):
+            - ``TimeoutError``: 网络/算力超时, 降级返回 None + log warning
+            - 其他 ``Exception``: provider 异常 (rate limit / auth fail / invalid response),
+              降级返回 None + log warning (含异常类型 + 消息)
+            - 任意路径均 **不再静默** — 调用方可据 None 判断失败并自行降级
+            - 未来如需重试或抛错,在此扩展即可 — 保持接口契约不变
         """
         if self.provider is None:
             return None
         try:
             return self.provider.generate_text(prompt, system=system, **kwargs)
-        except Exception as e:  # noqa: BLE001
+        except TimeoutError as e:
+            _logger.warning(
+                "LLM generate timed out (provider=%s, prompt_len=%d): %s",
+                type(self.provider).__name__,
+                len(prompt),
+                e,
+            )
+            return None
+        except Exception as e:  # noqa: BLE001 — 降级路径, 错误已 log
+            _logger.warning(
+                "LLM generate failed (provider=%s, prompt_len=%d, exc=%s): %s",
+                type(self.provider).__name__,
+                len(prompt),
+                type(e).__name__,
+                e,
+            )
             return None
 
     def execute(self, input: dict) -> ToolResult:
