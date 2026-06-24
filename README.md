@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Status: v2.5](https://img.shields.io/badge/status-v2.5-blue)]()
-[![Tests: 482 passed](https://img.shields.io/badge/tests-482%20passed-brightgreen)]()
+[![Tests: 653 passed](https://img.shields.io/badge/tests-653%20passed-brightgreen)]()
 
 **Vault-borne growing agent.** Ownerable, seed-grown, never OOC.
 
@@ -228,7 +228,7 @@ mortis/
 | 其他 (seed/memory/provider/tools/cli) | 1442 | — |
 | **合计** | **~9100** | **~6400** |
 
-**482 tests passed** — 覆盖所有模块的主路径 + 边界 + 安全检查。
+**653 tests passed** — 覆盖所有模块的主路径 + 边界 + 安全检查。
 
 ## 路线图
 
@@ -278,6 +278,7 @@ RFC-001 的 9 个模块都已实现并通过测试，但它们 **还没有接入
 - [RFC-001: 认知生长系统](docs/rfc/RFC-001-cognitive-growth.md) — 三态意识 + 梦境分级 + Reading Steiner 完整设计
 - [RFC-001 分解计划](docs/rfc/RFC-001-decomposition.md) — 9 个 issue 的依赖关系和工作量估算
 - [RFC-001 开放问题裁剪](docs/rfc/RFC-001-open-questions-decision.md) — 7 个开放问题的 owner 决策
+- [Mortis v3 方法级代码审计报告](docs/mortis-audit-v3/mortis-audit-v3.html) — 架构分析 / 调用链追踪 / 信号结构 / 安全审计 / 信息流转模拟（图文并茂，含 ECharts + Mermaid 可视化）
 
 ## 我从来没有觉得烧Token开心过
 
@@ -285,7 +286,15 @@ RFC-001 的 9 个模块都已实现并通过测试，但它们 **还没有接入
 
 ## 审计
 
-Mortis 经过独立第三方智能体（哈尼斯）的全量代码审计，发现并修复了 n 个 bug （感谢GLM）
+Mortis 经过多轮独立代码审计，最新 v3 审计报告覆盖方法级调用链分析、信号结构梳理、架构剖析、安全审计与信息流转模拟：
+
+→ **[查看 v3 审计报告](docs/mortis-audit-v3/mortis-audit-v3.html)**（HTML 图文报告，含 ECharts 数据可视化 + Mermaid 架构图）
+
+**审计修复摘要**：
+- 2 个 CRITICAL 数据泄漏漏洞（已修复 + 16 条回归测试）
+- 3 个 MEDIUM 安全/质量问题（已修复 + 10 条回归测试）
+- 2 个测试 time-bomb 隐患（已修复，动态日期替代硬编码）
+- 2 条架构改进建议 + 2 条优化建议
 
 ## 许可
 
