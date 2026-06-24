@@ -9,6 +9,7 @@ unease 值。owner 编辑 growth 时对应维度 unease 上升;awake 时读取,
 子模块:
 - unease: UneaseState + load/save/accumulate/decay
 - watcher: GrowthWatcher (watchdog) 检测 mortis-growth/ 变更 → 调 callback
+- lifecycle: SteinerController — 启动/停止 watcher + unease 落盘(issue #58)
 - prompt: 5 档不安文案 (0.0 / 0.15 / 0.45 / 0.75 / 1.0)
 - drift: should_notify_owner 任意维度 ≥ 0.75 → True
 
@@ -18,11 +19,14 @@ sub 感知 steiner、Medium/Deep dreamer。
 
 from __future__ import annotations
 
+from .drift import should_notify_owner
+from .lifecycle import SteinerController
+from .prompt import unease_prompt
 from .unease import (
     DECAY_PER_DAY,
     DEFAULT_ACCUMULATE_DELTA,
-    UNEASE_FILE,
     STEINER_DIR,
+    UNEASE_FILE,
     UneaseState,
     accumulate,
     decay,
@@ -30,9 +34,6 @@ from .unease import (
     save_unease,
 )
 from .watcher import GrowthWatcher
-from .prompt import unease_prompt
-from .drift import should_notify_owner
-
 
 __all__ = [
     # unease
@@ -47,6 +48,8 @@ __all__ = [
     "save_unease",
     # watcher
     "GrowthWatcher",
+    # lifecycle
+    "SteinerController",
     # prompt
     "unease_prompt",
     # drift
