@@ -108,14 +108,30 @@ class TestParser:
         assert args.command == "status"
         assert args.vault == "vault"
 
+    def test_parse_web_defaults(self) -> None:
+        """web 命令默认 port=8765, vault=vault。"""
+        parser = build_parser()
+        args = parser.parse_args(["web"])
+        assert args.command == "web"
+        assert args.port == 8765
+        assert args.vault == "vault"
+
+    def test_parse_web_custom_port(self) -> None:
+        """web --port 9999 解析正确。"""
+        parser = build_parser()
+        args = parser.parse_args(["web", "--port", "9999"])
+        assert args.command == "web"
+        assert args.port == 9999
+
     def test_commands_dict_has_new_entries(self) -> None:
-        """COMMANDS dict 包含 dream / reflect / status / daemon / goodnight。"""
+        """COMMANDS dict 包含 dream / reflect / status / daemon / goodnight / web。"""
         assert "dream" in COMMANDS
         assert "reflect" in COMMANDS
         assert "status" in COMMANDS
         assert "daemon" in COMMANDS
         assert "goodnight" in COMMANDS
-        assert len(COMMANDS) == 13  # 8 原有 + 3 (issue #56) + 1 (issue #60) + 1 (issue #61)
+        assert "web" in COMMANDS
+        assert len(COMMANDS) == 14  # 8 原有 + 3 (issue #56) + 1 (issue #60) + 1 (issue #61) + 1 (issue #52)
 
 
 # ============================================================

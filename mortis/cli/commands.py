@@ -265,6 +265,22 @@ def cmd_goodnight(args: argparse.Namespace) -> int:
     return 0 if all(results.values()) else 1
 
 
+def cmd_web(args: argparse.Namespace) -> int:
+    """启动 Web UI server。
+
+    issue #52: owner 视角的 HTTP 浏览接口 (growth / dream / unease / notifications)。
+    阻塞直到 Ctrl-C (KeyboardInterrupt)。
+    """
+    from mortis.web.server import start_web_server
+    server = start_web_server(vault_path=str(args.vault), port=args.port)
+    print(f"Web UI: http://localhost:{args.port}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.shutdown()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mortis",
@@ -380,6 +396,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="LLM provider（default: auto）",
     )
 
+    # web (issue #52: Web UI server)
+    p_web = sub.add_parser("web", help="启动 Web UI server (growth/dream/unease 浏览)")
+    p_web.add_argument(
+        "--port", type=int, default=8765,
+        help="监听端口（default: 8765）",
+    )
+    p_web.add_argument("--vault", default="vault", help="vault 根目录")
+
     return parser
 
 
@@ -397,6 +421,7 @@ COMMANDS = {
     "status": cmd_status,
     "daemon": cmd_daemon,
     "goodnight": cmd_goodnight,
+    "web": cmd_web,
 }
 
 
