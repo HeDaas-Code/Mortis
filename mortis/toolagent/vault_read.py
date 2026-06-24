@@ -36,7 +36,11 @@ class VaultReadAgent(ToolAgent):
     """
 
     # 阻止 Mortis 人格层通过 ToolAgent 读的目录前缀 (issue #38)
-    BLOCKED_PREFIXES: tuple[str, ...] = ("mortis-steiner/",)
+    # issue #80: sub-outputs 阻断下沉到 agent 层 — 与包装层 (agent_tool.py) 双重防护
+    BLOCKED_PREFIXES: tuple[str, ...] = (
+        "mortis-steiner/",                  # issue #38: Mortis 不应知道 watcher/unease
+        "mortis-journal/sub-outputs/",       # issue #68: sub 私域 (review/merge/edit 三态)
+    )
 
     def __init__(
         self,
@@ -60,7 +64,10 @@ class VaultReadAgent(ToolAgent):
         # 安全检查: blocked prefix (issue #38)
         # 用栈式归一化消除路径中段的 ..,避免 LLM 构造
         # `mortis-journal/../mortis-steiner/x.md` 绕过白名单 (issue #67 audit Critical-A)。
+        # issue #80: 末尾补 / 防止 `mortis-journal/sub-outputs` (无尾 /) 漏判
         rel_path_norm = normalize_rel_path(rel_path)
+        if not rel_path_norm.endswith("/"):
+            rel_path_norm += "/"
         for prefix in self._blocked:
             if rel_path_norm.startswith(prefix):
                 return ToolResult(
