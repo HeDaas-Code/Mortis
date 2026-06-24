@@ -85,3 +85,31 @@ class MockProvider:
             time.monotonic() - start,
         )
         return content
+
+    # ---- 异步接口 (issue #46) ----
+    # mock 即时返回, 无 I/O, 直接调同步方法即可 (无需 executor)。
+
+    async def async_generate(
+        self,
+        messages: list[Message],
+        *,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+    ) -> Message:
+        """异步 generate — mock 即时, 直接调同步方法 (issue #46)。"""
+        return self.generate(
+            messages, temperature=temperature, max_tokens=max_tokens
+        )
+
+    async def async_generate_text(
+        self,
+        prompt: str,
+        system: str = "",
+        *,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+    ) -> str:
+        """异步 generate_text — mock 即时, 直接调同步方法 (issue #46)。"""
+        return self.generate_text(
+            prompt, system=system, temperature=temperature, max_tokens=max_tokens
+        )

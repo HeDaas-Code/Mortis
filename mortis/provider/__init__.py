@@ -1,14 +1,17 @@
-"""Mortis LLM provider — 支持 mock / minimax + 注册表扩展 (issue #45)。"""
+"""Mortis LLM provider — 支持 mock / minimax + 注册表扩展 (issue #45) + async (issue #46)。"""
 
 from __future__ import annotations
+
+from mortis.tools.base import ToolResult
 
 from .base import (
     LLMProviderProtocol,
     Message,
     ToolCall,
+    run_in_executor,
 )
+from .minimax import MinimaxAPIError, MinimaxAuthError, MinimaxProvider
 from .mock import MockProvider
-from .minimax import MinimaxProvider, MinimaxAPIError, MinimaxAuthError
 from .registry import (
     get_provider,
     list_providers,
@@ -16,7 +19,6 @@ from .registry import (
     register_provider,
 )
 from .router import configure_routing, get_provider_for_task
-from mortis.tools.base import ToolResult
 
 # issue #45: 自动注册内置 provider 工厂 — 注册表模式, 便于按名称扩展新 provider
 register_provider("mock", MockProvider)
@@ -39,4 +41,6 @@ __all__ = [
     # 任务路由 (issue #45)
     "configure_routing",
     "get_provider_for_task",
+    # 异步 (issue #46)
+    "run_in_executor",
 ]
