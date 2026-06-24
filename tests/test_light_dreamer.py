@@ -18,6 +18,11 @@ from mortis.reflect import clear_emotion_cache
 from mortis.vault import Vault
 
 
+def _today() -> str:
+    """UTC today — 与 light.py _date_cutoff() 同源, 避免 time-bomb (issue #78)。"""
+    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+
+
 # ============================================================
 # fixtures
 # ============================================================
@@ -28,7 +33,7 @@ def vault_dir() -> Path:
     """每次测试一个 tmp 目录 + 配好 2 个 session。"""
     with tempfile.TemporaryDirectory(prefix="mortis-dream-") as td:
         d = Path(td)
-        sessions_dir = d / "mortis-journal" / "sessions" / "2026-06-22"
+        sessions_dir = d / "mortis-journal" / "sessions" / _today()
         sessions_dir.mkdir(parents=True, exist_ok=True)
         s1 = Session(session_id="session-a", threads=["th-1"])
         s1.save(sessions_dir)
@@ -121,7 +126,7 @@ class TestRunEndToEnd:
     def test_run_with_only_one_session(self, vault_dir: Path) -> None:
         """单 session 也能跑(只 load 1 条)。"""
         # 删掉 session-b
-        (vault_dir / "mortis-journal" / "sessions" / "2026-06-22" / "session-b.json").unlink()
+        (vault_dir / "mortis-journal" / "sessions" / _today() / "session-b.json").unlink()
 
         vault = Vault(vault_dir)
         provider = _make_provider(

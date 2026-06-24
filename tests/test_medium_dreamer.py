@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -17,6 +17,15 @@ from mortis.reflect import clear_emotion_cache
 from mortis.vault import Vault
 
 
+def _recent_days(n: int = 3) -> list[str]:
+    """最近 n 天的 UTC 日期列表 (旧→新), 与 medium.py _date_cutoff 同源 (issue #79)。
+
+    MediumDreamer days=7, cutoff = today - 6。返回 today, today-1, today-2 保证在窗口内。
+    """
+    today = datetime.now(tz=timezone.utc).date()
+    return [(today - timedelta(days=n - 1 - i)).isoformat() for i in range(n)]
+
+
 @pytest.fixture(autouse=True)
 def _reset_emotion_cache() -> None:
     clear_emotion_cache()
@@ -28,8 +37,8 @@ def _reset_emotion_cache() -> None:
 def vault_dir() -> Path:
     with tempfile.TemporaryDirectory(prefix="mortis-medium-") as td:
         d = Path(td)
-        # 配 2 个日期的 sessions (跨天)
-        for day in ["2026-06-20", "2026-06-21", "2026-06-22"]:
+        # 配 2 个日期的 sessions (跨天) — 动态日期避免 time-bomb (issue #79)
+        for day in _recent_days(3):
             sessions_dir = d / "mortis-journal" / "sessions" / day
             sessions_dir.mkdir(parents=True, exist_ok=True)
             for sid in ["sa", "sb"]:
@@ -85,13 +94,14 @@ class TestMediumDreamer:
     def test_confidence_promotion_when_overlap(self, vault_dir: Path) -> None:
         """SIMULATE 判定重叠 → CRYSTALLIZE confidence=0.5。"""
         v = Vault(vault_dir)
-        # 写一个旧 growth, source_sessions 含 "2026-06-22-sa"
+        # 写一个旧 growth, source_sessions 含最新一天的 session (issue #79 动态日期)
         now = datetime.now(tz=timezone.utc).isoformat()
+        latest_day = _recent_days(3)[-1]
         old = Growth(
             id="old-overlap", dimension=Dimension.IDENTITY,
             confidence=0.5,
             created_at=now, last_validated=now,
-            source_sessions=("2026-06-22-sa",),
+            source_sessions=(f"{latest_day}-sa",),
             dream_level=DreamLevel.LIGHT,
             emotional_valence=0.0, emotional_arousal=0.0,
             tags=(), body="alpha bravo charlie",
