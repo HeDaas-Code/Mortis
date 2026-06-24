@@ -18,6 +18,7 @@ from typing import Iterable
 
 from mortis.growth.frontmatter import FrontmatterError
 from mortis.growth.model import Dimension, DreamLevel, Growth
+from mortis.redact import redact_snippet
 from mortis.vault.local import Vault
 
 
@@ -133,8 +134,13 @@ def growth_system_prompt(growths: Iterable[Growth]) -> str:
 
 
 def _preview_body(g: Growth) -> str:
-    """生成单条 growth 的 preview 行 — body 第一句(截断 60 字符)。"""
-    src = g.body.strip()
+    """生成单条 growth 的 preview 行 — body 第一句(截断 60 字符)。
+
+    issue #85: body 注入 system prompt 前先 redact — 过滤 dream callout /
+    emotion 标签 / subconscious 注释等 owner 私密字段 (HARNESS.md '数据不外流')。
+    只 redact body; growth 的其他字段 (dimension, confidence, tags 等) 不受影响。
+    """
+    src = redact_snippet(g.body).strip()
     if not src:
         return f"[{g.id}] (empty body)"
     for sep in ("。", ".", "!", "?", "！", "?"):
