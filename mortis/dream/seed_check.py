@@ -21,6 +21,7 @@ from typing import Any
 
 from mortis.growth.model import Dimension
 from mortis.provider.base import LLMProviderProtocol
+from mortis.redact import redact_snippet
 from mortis.seed import Seed
 
 
@@ -150,14 +151,20 @@ def seed_check(
 
     Returns:
         DriftReport — 含 per-dim drift + total + alerts + raw。
+
+    issue #84 CRITICAL: growth_summary 来自 growth body 前 200 字摘要,
+    可能含 dream callout / [emotion:...] / %%subconscious%% 等私密字段,
+    发 LLM 前必须 redact 脱敏 (HARNESS.md '数据不外流' 原则)。
     """
     seven_dims = ", ".join(d.value for d in Dimension)
     seed_text = _seed_to_text(seed)
+    # issue #84: 发 LLM 前 redact growth_summary, 防止私密字段外流
+    safe_summary = redact_snippet(growth_summary)
     prompt = (
         _DRIFT_PROMPT
         .replace("{seven_dims}", seven_dims)
         .replace("{seed_text}", seed_text)
-        .replace("{growth_summary}", growth_summary)
+        .replace("{growth_summary}", safe_summary)
     )
     raw = provider.generate_text(prompt)
     per_dim = _parse_drift(raw)
