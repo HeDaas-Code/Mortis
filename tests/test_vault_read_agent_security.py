@@ -110,3 +110,40 @@ class TestPathTraversal:
         agent = VaultReadAgent(v)
         r = agent.execute({"rel_path": "foo/../../mortis-steiner/watcher.md"})
         assert r.success is False
+
+
+class TestSubOutputsBlocked:
+    """issue #80: VaultReadAgent agent 层阻断 sub-outputs 私域。
+
+    sub-outputs 阻断原只在 ToolProtocol 包装层 (agent_tool.py)。
+    直接用 VaultReadAgent 可绕过读 sub 私域 (review/merge/edit 三态)。
+    修复: BLOCKED_PREFIXES 加 mortis-journal/sub-outputs/, agent 层自带防护。
+    """
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            # 基础
+            "mortis-journal/sub-outputs/leak.md",
+            # 中段 .. 绕过
+            "mortis-journal/foo/../sub-outputs/leak.md",
+            "mortis-growth/../mortis-journal/sub-outputs/leak.md",
+            # 前缀混淆 (无尾 /, 归一化后补 /)
+            "mortis-journal/sub-outputs",
+        ],
+    )
+    def test_sub_outputs_blocked(self, vault_dir: Path, path: str) -> None:
+        """直接用 VaultReadAgent 读 sub-outputs 必须被 agent 层拒绝。"""
+        v = Vault(vault_dir)
+        agent = VaultReadAgent(v)
+        r = agent.execute({"rel_path": path})
+        assert r.success is False, f"路径 {path!r} 应该被拒绝, 但 success=True"
+        assert "blocked prefix" in (r.error or "").lower() or "access denied" in (r.error or "").lower()
+
+    def test_sub_outputs_content_not_leaked(self, vault_dir: Path) -> None:
+        """sub-outputs 内容绝不能出现在返回结果中。"""
+        v = Vault(vault_dir)
+        agent = VaultReadAgent(v)
+        r = agent.execute({"rel_path": "mortis-journal/sub-outputs/leak.md"})
+        assert r.success is False
+        assert r.data is None or "should not be readable" not in str(r.data)
