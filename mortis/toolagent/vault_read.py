@@ -21,8 +21,8 @@ from __future__ import annotations
 
 from typing import Any
 from mortis.provider.base import LLMProviderProtocol
+from mortis.redact import redact_snippet as _redact_snippet
 from mortis.toolagent.base import ToolAgent, ToolResult
-from mortis.toolagent.vault_search import _redact_snippet
 from mortis.vault import Vault
 from mortis.vault.normalize import normalize_rel_path
 from mortis.vault.obsidian import parse as parse_obsidian
@@ -112,7 +112,7 @@ class VaultReadAgent(ToolAgent):
 
         安全 (审计 CRITICAL-1): 发给 LLM 前必须 redact owner 私密字段
         (dream callouts / emotion 标签 / subconscious / emotional_*)。
-        复用 VaultSearchAgent._redact_snippet, 保证两处 LLM 入口 redact 一致。
+        复用共享模块 mortis.redact.redact_snippet, 保证所有 LLM 入口 redact 一致。
         HARNESS.md '数据不外流' 原则。
 
         Args:
