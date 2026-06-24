@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
-from typing import Any
-
+import time
 import urllib.error
 import urllib.request
+from typing import Any
 
-from .base import LLMProviderProtocol, Message
+from .audit import messages_hash, sha256_prefix
+from .base import Message
+
+_logger = logging.getLogger(__name__)
 
 MINIMAX_DEFAULT_BASE_URL = "https://api.minimax.chat/v1"
 MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
@@ -74,6 +78,8 @@ class MinimaxProvider:
             raise MinimaxAuthError(
                 "MINIMAX_API_KEY not set — export it before using MinimaxProvider"
             )
+        # issue #87: 审计 hash (前 16 位), 不记 prompt 原文
+        prompt_hash = messages_hash(messages)
         body = self._build_body(messages, temperature, max_tokens)
         req = urllib.request.Request(
             url=f"{self._base_url}/chat/completions",
@@ -84,16 +90,40 @@ class MinimaxProvider:
             },
             method="POST",
         )
+        start = time.monotonic()
         try:
             with urllib.request.urlopen(req, timeout=self._timeout) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
+            elapsed = time.monotonic() - start
+            _logger.debug(
+                "[provider] method=generate prompt_hash=%s resp_hash= "
+                "elapsed=%.3fs status=http_error_%d",
+                prompt_hash,
+                elapsed,
+                e.code,
+            )
             if e.code in (401, 403):
                 raise MinimaxAuthError(f"minimax auth failed: HTTP {e.code}") from e
             raise MinimaxAPIError(f"minimax API HTTP {e.code}") from e
         except urllib.error.URLError as e:
+            elapsed = time.monotonic() - start
+            _logger.debug(
+                "[provider] method=generate prompt_hash=%s resp_hash= "
+                "elapsed=%.3fs status=url_error",
+                prompt_hash,
+                elapsed,
+            )
             raise MinimaxAPIError(f"minimax API network error: {e}") from e
-        return self._extract_message(payload)
+        message = self._extract_message(payload)
+        # issue #87: 成功路径审计 log — 含 prompt/response hash + 耗时, 不含原文
+        _logger.debug(
+            "[provider] method=generate prompt_hash=%s resp_hash=%s elapsed=%.3fs",
+            prompt_hash,
+            sha256_prefix(message.content),
+            time.monotonic() - start,
+        )
+        return message
 
     def generate_text(
         self,
@@ -103,11 +133,24 @@ class MinimaxProvider:
         temperature: float = 0.7,
         max_tokens: int | None = None,
     ) -> str:
+        # issue #87: 审计 hash (前 16 位), 不记 prompt 原文
+        prompt_hash = sha256_prefix(prompt)
+        start = time.monotonic()
         messages = []
         if system:
             messages.append(Message(role="system", content=system))
         messages.append(Message(role="user", content=prompt))
-        return self.generate(messages, temperature=temperature, max_tokens=max_tokens).content
+        content = self.generate(
+            messages, temperature=temperature, max_tokens=max_tokens
+        ).content
+        # issue #87: 成功路径审计 log — 含 prompt/response hash + 耗时, 不含原文
+        _logger.debug(
+            "[provider] method=generate_text prompt_hash=%s resp_hash=%s elapsed=%.3fs",
+            prompt_hash,
+            sha256_prefix(content),
+            time.monotonic() - start,
+        )
+        return content
 
     def _build_body(
         self,

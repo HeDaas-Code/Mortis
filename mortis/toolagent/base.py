@@ -29,8 +29,10 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from mortis.provider.audit import sha256_prefix
 from mortis.provider.base import LLMProviderProtocol
-from mortis.tools.base import ToolProtocol, ToolResult as ToolLayerResult
+from mortis.tools.base import ToolProtocol
+from mortis.tools.base import ToolResult as ToolLayerResult
 
 _logger = logging.getLogger(__name__)
 
@@ -114,7 +116,14 @@ class ToolAgent:
         """
         return cls(tool=tool, agent_id=agent_id, provider=provider, timeout=timeout)
 
-    def _llm_generate(self, prompt: str, system: str = "", **kwargs) -> str | None:
+    def _llm_generate(
+        self,
+        prompt: str,
+        system: str = "",
+        *,
+        redact: bool = False,
+        **kwargs,
+    ) -> str | None:
         """调用 LLM 生成文本 (issue #63)。
 
         若无 provider,返回 None。
@@ -122,10 +131,19 @@ class ToolAgent:
         Args:
             prompt: 用户 prompt。
             system: 可选系统提示词。
+            redact: issue #87 — 标记 prompt 是否已由调用方脱敏 (默认 False)。
+                **本方法不执行脱敏**, 仅在审计 log 中记录该状态, 便于事后排查
+                是否有未脱敏的私密内容被发给外部 LLM。调用方 (如 VaultSearchAgent)
+                应在调用前自行 redact (HARNESS.md '数据不外流')。
             **kwargs: 透传给 provider.generate_text() 的额外参数。
 
         Returns:
             LLM 生成的文本,或 None (无 provider 或降级失败)。
+
+        审计日志 (issue #87):
+            - 成功: DEBUG log 含 prompt 的 SHA256 前 16 位 + redact 标记
+              (不记 prompt 原文, 可事后追溯)
+            - 失败: WARNING log 在原 prompt_len 基础上追加 prompt_hash + redact
 
         失败处理 (issue #70 MEDIUM-E):
             - ``TimeoutError``: 网络/算力超时, 降级返回 None + log warning
@@ -136,25 +154,41 @@ class ToolAgent:
         """
         if self.provider is None:
             return None
+        # issue #87: 计算 prompt hash (前 16 位), 用于审计追溯 — 不记原文
+        prompt_hash = sha256_prefix(prompt)
         try:
-            return self.provider.generate_text(prompt, system=system, **kwargs)
+            result = self.provider.generate_text(prompt, system=system, **kwargs)
         except TimeoutError as e:
             _logger.warning(
-                "LLM generate timed out (provider=%s, prompt_len=%d): %s",
+                "LLM generate timed out (provider=%s, prompt_len=%d, "
+                "prompt_hash=%s, redact=%s): %s",
                 type(self.provider).__name__,
                 len(prompt),
+                prompt_hash,
+                redact,
                 e,
             )
             return None
         except Exception as e:  # noqa: BLE001 — 降级路径, 错误已 log
             _logger.warning(
-                "LLM generate failed (provider=%s, prompt_len=%d, exc=%s): %s",
+                "LLM generate failed (provider=%s, prompt_len=%d, "
+                "prompt_hash=%s, redact=%s, exc=%s): %s",
                 type(self.provider).__name__,
                 len(prompt),
+                prompt_hash,
+                redact,
                 type(e).__name__,
                 e,
             )
             return None
+        # issue #87: 成功路径审计 log — 含 hash + redact 标记, 不含原文
+        _logger.debug(
+            "[provider] method=_llm_generate prompt_hash=%s redact=%s prompt_len=%d",
+            prompt_hash,
+            redact,
+            len(prompt),
+        )
+        return result
 
     def execute(self, input: dict) -> ToolResult:
         """把 ``input`` dict 透传给 ``tool.execute(**input)``,翻译结果。
