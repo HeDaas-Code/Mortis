@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -151,6 +152,39 @@ class MinimaxProvider:
             time.monotonic() - start,
         )
         return content
+
+    # ---- 异步接口 (issue #46) ----
+    # 用 asyncio.to_thread() 把同步 HTTP 调用移到独立线程,
+    # 避免阻塞事件循环, 让 daemon 模式可并发触发多个认知周期。
+
+    async def async_generate(
+        self,
+        messages: list[Message],
+        *,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+    ) -> Message:
+        """异步 generate — 用 asyncio.to_thread 包装同步 HTTP 调用 (issue #46)。"""
+        return await asyncio.to_thread(
+            self.generate, messages, temperature=temperature, max_tokens=max_tokens
+        )
+
+    async def async_generate_text(
+        self,
+        prompt: str,
+        system: str = "",
+        *,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+    ) -> str:
+        """异步 generate_text — 用 asyncio.to_thread 包装同步 HTTP 调用 (issue #46)。"""
+        return await asyncio.to_thread(
+            self.generate_text,
+            prompt,
+            system=system,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
     def _build_body(
         self,

@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+from mortis.tools.base import ToolResult
+
 from .base import (
     LLMProviderProtocol,
     Message,
     ToolCall,
+    run_in_executor,
 )
+from .minimax import MinimaxAPIError, MinimaxAuthError, MinimaxProvider
 from .mock import MockProvider
-from .minimax import MinimaxProvider, MinimaxAPIError, MinimaxAuthError
 from .registry import make_provider
-from mortis.tools.base import ToolResult
 
 __all__ = [
     "LLMProviderProtocol",
@@ -22,4 +24,5 @@ __all__ = [
     "MinimaxAPIError",
     "MinimaxAuthError",
     "make_provider",
+    "run_in_executor",
 ]
