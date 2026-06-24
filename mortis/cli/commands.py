@@ -129,6 +129,107 @@ def cmd_archive(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dream(args: argparse.Namespace) -> int:
+    """手动触发梦境。--level light/medium/deep。
+
+    issue #56: owner 可手动触发认知周期中的 DREAM 阶段。
+    """
+    master = _build_master(args.vault, args.seed, args.provider)
+    from mortis.dream import LightDreamer, MediumDreamer
+    from mortis.dream.deep import DeepDreamer
+
+    if args.level == "light":
+        dreamer = LightDreamer(master.vault, master.provider)
+    elif args.level == "medium":
+        dreamer = MediumDreamer(master.vault, master.provider, k=args.k)
+    else:
+        dreamer = DeepDreamer(master.vault, master.provider, master.seed)
+
+    result = dreamer.run()
+    print(f"dream {args.level}: ok={result.ok}, phases={len(result.traces)}")
+    if not result.ok:
+        for t in result.traces:
+            if not t.ok:
+                err = t.detail.get("error", "failed")
+                print(f"  {t.phase}: {err}")
+        return 1
+    return 0
+
+
+def cmd_reflect(args: argparse.Namespace) -> int:
+    """手动触发反思。
+
+    issue #56: owner 可手动触发认知周期中的 REFLECT 阶段。
+    --sessions 显式传 session 文件名;不传则扫最近一天的 sessions。
+    """
+    master = _build_master(args.vault, args.seed, args.provider)
+    from mortis.reflect import ReflectExecutor
+
+    executor = ReflectExecutor(master.vault, master.provider, mortis_name="Mortis")
+
+    if args.sessions:
+        # 显式传 session 路径 — 不传 sessions_dir,executor 走默认
+        # (vault.root / mortis-journal / sessions),rel 可含日期子目录
+        session_paths = args.sessions
+        sessions_dir = None
+    else:
+        # 扫最近一天的 sessions
+        root_sessions = master.vault.root / "mortis-journal" / "sessions"
+        if not root_sessions.exists():
+            print("no sessions found")
+            return 1
+        date_dirs = sorted(d for d in root_sessions.iterdir() if d.is_dir())
+        if not date_dirs:
+            print("no session dates found")
+            return 1
+        latest = date_dirs[-1]
+        session_paths = [f.name for f in latest.glob("*.json")]
+        if not session_paths:
+            print(f"no sessions in {latest.name}")
+            return 1
+        sessions_dir = latest
+
+    reflection = executor.run(session_paths, sessions_dir=sessions_dir)
+    print(f"reflect: id={reflection.id}, valence={reflection.valence:.2f}")
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    """查看当前状态：clock phase + unease + pending counts。
+
+    issue #56: owner 视角的状态总览。owner 可以读 unease(不是 Mortis agent 视角)。
+    """
+    from mortis.clock import LogicalClock
+    from mortis.steiner import load_unease
+    from mortis.vault import Vault
+
+    vault = Vault(args.vault)
+    clock = LogicalClock()
+    state = clock.state()
+    print(f"phase: {state.value}")
+
+    # unease (owner 视角 — 可以读隐藏层)
+    try:
+        unease = load_unease(vault)
+        print(f"unease max: {unease.max_unease():.2f}")
+        for dim, val in unease.per_dimension.items():
+            if val > 0:
+                print(f"  {dim.value}: {val:.2f}")
+    except Exception:
+        print("unease: (unavailable)")
+
+    # pending reflections
+    from mortis.reflect import list_pending_reflections
+
+    pending = list_pending_reflections(vault)
+    print(f"pending reflections: {len(pending)}")
+
+    # growth count
+    growths = vault.list_growths()
+    print(f"growths: {len(growths)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mortis",
@@ -190,6 +291,36 @@ def build_parser() -> argparse.ArgumentParser:
     p_arc.add_argument("--task", default=None, help="任务描述（用于自动摘要）")
     p_arc.add_argument("--target", default=None, help="归档到的 vault 路径")
 
+    # dream (issue #56: 手动触发梦境)
+    p_dream = sub.add_parser("dream", help="手动触发梦境")
+    p_dream.add_argument(
+        "--level", default="light", choices=["light", "medium", "deep"],
+        help="梦境级别（default: light）",
+    )
+    p_dream.add_argument("--k", type=int, default=4, help="Medium dream k 值")
+    p_dream.add_argument("--vault", default="vault", help="vault 根目录")
+    p_dream.add_argument("--seed", default="seed.md", help="seed 文件路径")
+    p_dream.add_argument(
+        "--provider", default="auto", choices=["auto", "minimax", "mock"],
+        help="LLM provider（default: auto）",
+    )
+
+    # reflect (issue #56: 手动触发反思)
+    p_reflect = sub.add_parser("reflect", help="手动触发反思")
+    p_reflect.add_argument(
+        "--sessions", nargs="*", help="session 文件名(默认扫最近)",
+    )
+    p_reflect.add_argument("--vault", default="vault", help="vault 根目录")
+    p_reflect.add_argument("--seed", default="seed.md", help="seed 文件路径")
+    p_reflect.add_argument(
+        "--provider", default="auto", choices=["auto", "minimax", "mock"],
+        help="LLM provider（default: auto）",
+    )
+
+    # status (issue #56: 查看当前状态)
+    p_status = sub.add_parser("status", help="查看当前状态")
+    p_status.add_argument("--vault", default="vault", help="vault 根目录")
+
     return parser
 
 
@@ -202,6 +333,9 @@ COMMANDS = {
     "approve": cmd_approve,
     "discard": cmd_discard,
     "archive": cmd_archive,
+    "dream": cmd_dream,
+    "reflect": cmd_reflect,
+    "status": cmd_status,
 }
 
 
