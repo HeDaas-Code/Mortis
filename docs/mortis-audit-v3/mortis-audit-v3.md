@@ -1032,9 +1032,30 @@ owner 手动编辑 growth 文件 → GrowthWatcher 检测 → unease 注入
 
 5 天开发周期（2026-06-20 至 2026-06-25）、60+ 提交、88 个 issues、10+ 分支的完整时间轴。
 
+> 图中左侧泳道用 `B1`-`B27` 标记代表分支，避免名称重叠。标记与分支名对照见下表。
+
+#### 分支标记对照表
+
+| 标记 | 分支名 | 标记 | 分支名 |
+|:----:|--------|:----:|--------|
+| B1 | `main` | B15 | `fix/84-seed-check-redact` |
+| B2 | `fix/audit-hanis-vault-path-security` | B16 | `fix/86-session-redact` |
+| B3 | `fix/audit-hanis-pipeline-chain` | B17 | `fix/85-growth-preview-redact` |
+| B4 | `feature/v3-toolagent-llm-integration` | B18 | `fix/57-unease-injection` |
+| B5 | `fix/vault-read (PR #69)` | B19 | `fix/58-growth-watcher-start` |
+| B6 | `fix/agent-tool` | B20 | `fix/56-cli-extensions` |
+| B7 | `fix/toolagent (PR #74)` | B21 | `fix/61-goodnight-trigger` |
+| B8 | `chore/toolagent (PR #76)` | B22 | `fix/60-daemon-mode` |
+| B9 | `fix/toolagent (#77)` | B23 | `fix/45-provider-registry` |
+| B10 | `fix/80-vault-read-agent-sub-outputs` | B24 | `fix/46-async-generate` |
+| B11 | `fix/78-79-test-timebomb` | B25 | `fix/47-growth-compression` |
+| B12 | `fix/83-redact-shared` | B26 | `fix/48-drift-log` |
+| B13 | `fix/88-unify-toolresult` | B27 | `fix/52-web-ui` |
+| B14 | `fix/87-provider-audit-log` | | |
+
 ![Figure 10](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-10-timeline.png)
 
-> **Figure 10**: 分支与 Issue 提交时间轴 — 5 天 60+ 提交 88 issues 全部关闭
+> **Figure 10**: 分支与 Issue 提交时间轴 — 5 天 60+ 提交 88 issues 全部关闭（左侧 B1-B27 标记对应上表分支名）
 
 ### 时间轴详情（按日期分组）
 

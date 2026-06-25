@@ -808,14 +808,18 @@ def render_10_timeline():
         ("06-25 01:29", "main", "—", "Merge PR #66 (冲突解决)"),
     ]
 
-    # 按分支分组
-    branches = {}
+    # 按分支首次出现顺序分组，分配标记 B1, B2, ...
+    branches: dict[str, str] = {}  # branch -> marker
+    branch_data: dict[str, list] = {}  # branch -> [(date, issue, title)]
+    marker_idx = 0
     for date, branch, issue, title in timeline:
         if branch not in branches:
-            branches[branch] = []
-        branches[branch].append((date, issue, title))
+            marker_idx += 1
+            branches[branch] = f"B{marker_idx}"
+            branch_data[branch] = []
+        branch_data[branch].append((date, issue, title))
 
-    # 画分支泳道
+    # 画分支泳道 — 左侧用 B1/B2/... 标记，不写全名（避免重叠）
     branch_names = list(branches.keys())
     n_branches = len(branch_names)
     lane_height = 100 / n_branches
@@ -826,9 +830,11 @@ def render_10_timeline():
         ax.add_patch(Rectangle((0, y_lane), 100, lane_height,
                                facecolor="#FAFAFA" if i % 2 == 0 else "#F0F0F0",
                                edgecolor="#CCCCCC", linewidth=0.5))
-        # 分支名
-        ax.text(2, y_lane + lane_height / 2, branch, fontsize=8,
-                weight="bold", va="center", rotation=90)
+        # 分支标记（B1, B2, ...）— 不再写全名
+        marker = branches[branch]
+        ax.text(2, y_lane + lane_height / 2, marker, fontsize=8,
+                weight="bold", va="center", ha="center",
+                bbox=dict(facecolor="white", edgecolor="#000000", pad=2))
 
     # 画提交点
     for date, branch, issue, title in timeline:
