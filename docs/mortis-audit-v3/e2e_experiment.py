@@ -15,11 +15,15 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import time
 import traceback
+import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from http.server import HTTPServer
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 
 # 确保项目根在 sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -142,6 +146,10 @@ class ExperimentEnv:
             provider=self.provider,
             session=self.session,
         )
+        # Web UI server 生命周期 (E2E-26~31, 惰性启动)
+        self._web_server: HTTPServer | None = None
+        self._web_base_url: str | None = None
+        self._web_thread: threading.Thread | None = None
 
     def _write_test_seed(self) -> None:
         seed_content = """# Mortis seed — E2E 测试种子
@@ -226,7 +234,38 @@ Mortis-E2E。测试用人格，简短直接。
             (self.vault_root / rel).write_text(content, encoding="utf-8")
 
     def cleanup(self) -> None:
+        self.stop_web()
         shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    # ---- Web UI server 生命周期 (E2E-26~31) ----
+
+    def start_web(self) -> str:
+        """启动 Web UI server (后台线程, port=0 自动分配空闲端口)。
+
+        幂等 — 重复调用返回已运行的 server base_url。
+        """
+        if self._web_server is not None:
+            return self._web_base_url  # type: ignore[return-value]
+        from mortis.web.server import start_web_server
+        self._web_server = start_web_server(vault_path=str(self.vault_root), port=0)
+        actual_port = self._web_server.server_address[1]
+        self._web_base_url = f"http://127.0.0.1:{actual_port}"
+        self._web_thread = threading.Thread(
+            target=self._web_server.serve_forever, daemon=True
+        )
+        self._web_thread.start()
+        return self._web_base_url
+
+    def stop_web(self) -> None:
+        """关闭 Web UI server。"""
+        if self._web_server is not None:
+            self._web_server.shutdown()
+            self._web_server.server_close()
+            if self._web_thread is not None:
+                self._web_thread.join(timeout=5)
+            self._web_server = None
+            self._web_base_url = None
+            self._web_thread = None
 
 
 # ============================================================================
@@ -1112,6 +1151,267 @@ def step_25_full_cycle(env: ExperimentEnv, report: ExperimentReport) -> None:
 
 
 # ============================================================================
+# Web UI 交互步骤 (E2E-26~31) — issue #52/#53/#54
+# 纯 stdlib http.server, 无 LLM 调用, 验证 owner HTTP 交互 + 数据流转
+# ============================================================================
+
+def _get_json(base_url: str, path: str) -> tuple[int, dict]:
+    """发 GET 请求, 返回 (status_code, parsed_json)。"""
+    url = base_url + path
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            status = resp.status
+            body = resp.read().decode("utf-8")
+    except HTTPError as e:
+        status = e.code
+        body = e.read().decode("utf-8")
+    return status, json.loads(body)
+
+
+def step_26_web_server_dashboard(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-26: Web UI server 启动 + GET / (dashboard 仪表盘, issue #52)。"""
+    start = time.monotonic()
+    try:
+        base_url = env.start_web()
+        # dashboard 应返回 phase + unease_max + growth_count + endpoints
+        status, data = _get_json(base_url, "/")
+        ok = (
+            status == 200
+            and "phase" in data
+            and "unease_max" in data
+            and data["growth_count"] == 3  # 3 个预置 growth
+            and "/growths" in data["endpoints"]
+            and "/unease" in data["endpoints"]
+            and "/notifications" in data["endpoints"]
+            and "/dreams" in data["endpoints"]
+        )
+        report.add(StepResult(
+            step_id="E2E-26",
+            name="Web UI server 启动 + dashboard（issue #52）",
+            category="web",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"status={status}, phase={data.get('phase')}, growth_count={data.get('growth_count')}, endpoints={len(data.get('endpoints', []))}",
+            llm_calls=0,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-26",
+            name="Web UI server 启动 + dashboard（issue #52）",
+            category="web",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_27_web_growths(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-27: GET /growths + /growths/<rel> (growth 浏览器, issue #53)。"""
+    start = time.monotonic()
+    try:
+        base_url = env.start_web()
+        # 列表
+        s1, d1 = _get_json(base_url, "/growths")
+        ok_list = s1 == 200 and d1["total"] == 3 and len(d1["growths"]) == 3
+        # 详情 (取第一条)
+        rel_path = d1["growths"][0]["rel_path"] if ok_list else ""
+        s2, d2 = _get_json(base_url, f"/growths/{rel_path}")
+        ok_detail = (
+            s2 == 200
+            and d2.get("id") == "test-identity-001"
+            and d2.get("dimension") == "identity"
+            and "body" in d2
+            and "emotional_valence" in d2  # owner 视角可读 emotional_*
+        )
+        ok = ok_list and ok_detail
+        report.add(StepResult(
+            step_id="E2E-27",
+            name="GET /growths + /growths/<rel>（growth 浏览器, issue #53）",
+            category="web",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"列表 total={d1.get('total')}, 详情 id={d2.get('id')}, dimension={d2.get('dimension')}",
+            llm_calls=0,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-27",
+            name="GET /growths + /growths/<rel>（growth 浏览器, issue #53）",
+            category="web",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_28_web_unease(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-28: GET /unease (unease 仪表盘, issue #53)。"""
+    start = time.monotonic()
+    try:
+        from dataclasses import replace as dc_replace
+        from mortis.steiner import UneaseState, save_unease
+        # 写入非零 unease 状态
+        state = dc_replace(
+            UneaseState(),
+            per_dimension={
+                **UneaseState().per_dimension,
+                Dimension.IDENTITY: 0.45,
+                Dimension.VALUES: 0.82,
+            },
+        )
+        save_unease(env.vault, state)
+
+        base_url = env.start_web()
+        status, data = _get_json(base_url, "/unease")
+        ok = (
+            status == 200
+            and data["max_unease"] == 0.82
+            and len(data["per_dimension"]) == 7
+            and data["per_dimension"]["identity"] == 0.45
+            and data["per_dimension"]["values"] == 0.82
+            and "last_decay" in data
+        )
+        report.add(StepResult(
+            step_id="E2E-28",
+            name="GET /unease（unease 仪表盘, issue #53）",
+            category="web",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"max_unease={data.get('max_unease')}, identity={data.get('per_dimension', {}).get('identity')}, 7 维度={len(data.get('per_dimension', {}))}",
+            llm_calls=0,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-28",
+            name="GET /unease（unease 仪表盘, issue #53）",
+            category="web",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_29_web_notifications(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-29: GET /notifications (owner 通知通道, issue #54)。"""
+    start = time.monotonic()
+    try:
+        from mortis.web.notify import send_notification
+        # 写入 2 条通知
+        send_notification(env.vault, "drift", "identity drift 0.82", severity="warning")
+        send_notification(env.vault, "unease", "unease 积累超阈值", severity="info")
+
+        base_url = env.start_web()
+        status, data = _get_json(base_url, "/notifications")
+        ok = (
+            status == 200
+            and len(data["notifications"]) == 2
+            and data["notifications"][0]["type"] == "drift"
+            and data["notifications"][0]["severity"] == "warning"
+            and data["notifications"][0]["read"] is False
+        )
+        report.add(StepResult(
+            step_id="E2E-29",
+            name="GET /notifications（owner 通知通道, issue #54）",
+            category="web",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"notifications={len(data.get('notifications', []))}, 首条 type={data.get('notifications', [{}])[0].get('type')}",
+            llm_calls=0,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-29",
+            name="GET /notifications（owner 通知通道, issue #54）",
+            category="web",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_30_web_dreams(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-30: GET /dreams (dream 日历, issue #53)。"""
+    start = time.monotonic()
+    try:
+        # 写入 dream log 文件 (3 个 level)
+        for level in ("light", "medium", "deep"):
+            rel = f"mortis-dream-log/{level}/2026-06-25-{level}.md"
+            env.vault.write(rel, f"# Dream Log: {level}\n\n测试 dream log\n", whitelist=None)
+
+        base_url = env.start_web()
+        status, data = _get_json(base_url, "/dreams")
+        levels = {d["level"] for d in data.get("dreams", [])}
+        ok = (
+            status == 200
+            and len(data["dreams"]) == 3
+            and levels == {"light", "medium", "deep"}
+        )
+        report.add(StepResult(
+            step_id="E2E-30",
+            name="GET /dreams（dream 日历, issue #53）",
+            category="web",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"dreams={len(data.get('dreams', []))}, levels={levels}",
+            llm_calls=0,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-30",
+            name="GET /dreams（dream 日历, issue #53）",
+            category="web",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_31_web_404_and_dataflow(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-31: GET /unknown (404) + 数据流转校验 + server 关闭。"""
+    start = time.monotonic()
+    try:
+        base_url = env.start_web()
+        # 404 测试
+        s1, d1 = _get_json(base_url, "/nonexistent")
+        ok_404 = s1 == 404 and d1.get("error") == "not found"
+
+        # 数据流转校验: vault 写入 → HTTP 返回 — 验证 growth body 内容一致
+        s2, d2 = _get_json(base_url, "/growths")
+        first_rel = d2["growths"][0]["rel_path"]
+        s3, d3 = _get_json(base_url, f"/growths/{first_rel}")
+        # 读原始 vault 文件对比
+        raw_content = (env.vault_root / first_rel).read_text(encoding="utf-8")
+        # 注: growth parser 会剥离 # 标题, 用 body 中的实际段落校验
+        ok_dataflow = (
+            s3 == 200
+            and d3.get("id") == "test-identity-001"
+            and "E2E 测试用的 growth 文件" in d3.get("body", "")
+            and "E2E 测试用的 growth 文件" in raw_content  # vault 原文 ↔ HTTP 返回一致
+        )
+
+        # 关闭 server
+        env.stop_web()
+        ok = ok_404 and ok_dataflow
+        report.add(StepResult(
+            step_id="E2E-31",
+            name="GET /unknown (404) + 数据流转校验 + server 关闭",
+            category="web",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"404={ok_404}, 数据流转(vault↔HTTP)={ok_dataflow}, server 已关闭",
+            llm_calls=0,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-31",
+            name="GET /unknown (404) + 数据流转校验 + server 关闭",
+            category="web",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+# ============================================================================
 # 主流程
 # ============================================================================
 
@@ -1165,6 +1465,12 @@ def main() -> int:
         step_23_logical_clock,
         step_24_growth_compress,
         step_25_full_cycle,
+        step_26_web_server_dashboard,
+        step_27_web_growths,
+        step_28_web_unease,
+        step_29_web_notifications,
+        step_30_web_dreams,
+        step_31_web_404_and_dataflow,
     ]
 
     for i, step_fn in enumerate(steps, 1):
@@ -1182,8 +1488,8 @@ def main() -> int:
 
     env.cleanup()
 
-    # 生成报告
-    report_path = PROJECT_ROOT / "docs" / "mortis-audit-v3" / "e2e-report.md"
+    # 生成报告 (写入 raw 文件, 不覆盖手工版 e2e-report.md / e2e-report-agent.md)
+    report_path = PROJECT_ROOT / "docs" / "mortis-audit-v3" / "e2e-report-raw.md"
     _write_report(report, report_path)
     print()
     print("=" * 70)
@@ -1191,7 +1497,7 @@ def main() -> int:
           f"{report.summary['failed']} failed, "
           f"{report.summary['total_llm_calls']} LLM calls, "
           f"{report.total_elapsed_sec:.1f}s")
-    print(f"报告: {report_path}")
+    print(f"报告 (raw): {report_path}")
     print("=" * 70)
 
     return 0 if report.summary["failed"] == 0 else 1
@@ -1264,6 +1570,19 @@ def _write_report(report: ExperimentReport, path: Path) -> None:
         "| Vault 白名单 + 路径遍历 | S1/S2/S3/#67 | E2E-18 |",
         "| VaultReadAgent blocked_prefixes | #38/#68/#80 | E2E-19 |",
         "| Provider 审计日志 hash | #87 | E2E-20 |",
+        "",
+        "## 覆盖的 Web UI 交互入口（issue #52/#53/#54）",
+        "",
+        "| 端点 | 方法 | 功能 | E2E 步骤 |",
+        "|------|------|------|:--------:|",
+        "| / | GET | dashboard 仪表盘 (phase+unease+growth 概览) | E2E-26 |",
+        "| /growths | GET | growth 浏览器 (列表, 50 条预览) | E2E-27 |",
+        "| /growths/<rel> | GET | growth 详情 (含 emotional_*, owner 视角) | E2E-27 |",
+        "| /unease | GET | unease 仪表盘 (7 维度 + max + last_decay) | E2E-28 |",
+        "| /notifications | GET | owner 通知通道 (drift/unease/dream) | E2E-29 |",
+        "| /dreams | GET | dream 日历 (light/medium/deep 分组) | E2E-30 |",
+        "| /unknown | GET | 404 路由兜底 | E2E-31 |",
+        "| — | — | 数据流转校验 (vault 原文 ↔ HTTP 返回一致) | E2E-31 |",
         "",
     ])
 

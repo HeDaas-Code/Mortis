@@ -3,13 +3,13 @@
 > **HUMAN-READABLE VERSION (WITH DIAGRAMS)** — 本文件含架构图 + 调用链 + 信息流转图，适合人类阅读。
 > AI Agent 请阅读 [e2e-report-agent.md](e2e-report-agent.md)（纯文本结构化版本，无图片引用）。
 >
-> **E2E EXPERIMENT REPORT · v1.1 · WITH CALL CHAIN + SIGNAL FLOW**
+> **E2E EXPERIMENT REPORT · v1.2 · WITH CALL CHAIN + SIGNAL FLOW + WEB INTERACTION**
 >
-> 分支: `main` | 日期: 2026-06-25 | Provider: MinimaxProvider (MiniMax-M3, 真实 API 调用) | 开始: 2026-06-25T03:46:58Z | 结束: 2026-06-25T03:51:44Z | 总耗时: 285.7s
+> 分支: `main` | 日期: 2026-06-25 | Provider: MinimaxProvider (MiniMax-M3, 真实 API 调用) | 开始: 2026-06-25T03:46:58Z | 结束: 2026-06-25T03:51:44Z | 总耗时: 285.7s (LLM 步骤) + 0.54s (Web 步骤)
 
-| 总步骤 | 通过 | 失败 | 通过率 | LLM 调用 | 步骤总耗时 |
-|:------:|:----:|:----:|:------:|:--------:|:----------:|
-| 25 | 25 | 0 | 100.0% | 44 | 285.67s |
+| 总步骤 | 通过 | 失败 | 通过率 | LLM 调用 | Web 交互 | 步骤总耗时 |
+|:------:|:----:|:----:|:------:|:--------:|:--------:|:----------:|
+| 31 | 31 | 0 | 100.0% | 44 | 6 端点 | 286.21s |
 
 ---
 
@@ -23,8 +23,9 @@
 - [06 Vault 写入点追踪](#06-vault-写入点追踪)
 - [07 信号流分析](#07-信号流分析)
 - [08 安全机制验证](#08-安全机制验证)
-- [09 覆盖矩阵](#09-覆盖矩阵)
-- [10 发现与结论](#10-发现与结论)
+- [09 Web UI 交互核查](#09-web-ui-交互核查)
+- [10 覆盖矩阵](#10-覆盖矩阵)
+- [11 发现与结论](#11-发现与结论)
 
 ---
 
@@ -34,9 +35,9 @@
 
 ### 关键发现摘要
 
-> **✅ 全项通过: 25/25 步骤 100% 通过率**
+> **✅ 全项通过: 31/31 步骤 100% 通过率**
 >
-> 44 次真实 LLM 调用，覆盖 Provider 层（3 步）、Pipeline 层（3 步）、ToolAgent 层（5 步）、Reflect 层（1 步）、Dream 层（5 步）、Security 层（5 步）、Steiner 层（2 步）、Clock 层（1 步）。所有 LLM 调用点均返回有效响应，无 API 错误。
+> 44 次真实 LLM 调用 + 6 次 Web 交互，覆盖 Provider 层（3 步）、Pipeline 层（3 步）、ToolAgent 层（5 步）、Reflect 层（1 步）、Dream 层（5 步）、Security 层（5 步）、Steiner 层（2 步）、Clock 层（1 步）、Web 层（6 步）。所有 LLM 调用点均返回有效响应，所有 Web 端点返回正确 JSON，无 API 错误。
 
 > **✅ 调用链完整: 11/11 LLM 调用点全部验证**
 >
@@ -49,6 +50,10 @@
 > **✅ 信息流转通畅: 完整认知周期端到端验证**
 >
 > E2E-25 完整认知周期 AWAKE→REFLECT→DREAM_LIGHT 端到端通过，10 次 LLM 调用，75.47s。session 记录 → reflect 反思 → dream 联想 → growth 写入 → vault 持久化全链路通畅。
+
+> **✅ Web UI 交互核查: 6/6 端点 + 数据流转校验**
+>
+> E2E-26~31 Web UI 全端点覆盖：dashboard / growths / growth 详情 / unease / notifications / dreams / 404 路由兜底 + vault 原文 ↔ HTTP 返回数据一致性校验。owner 视角安全边界正确——可读 steiner 隐藏层与 emotional_* 字段，redact 仅对 LLM 调用链生效。
 
 ---
 
@@ -79,6 +84,7 @@
 | security | 5 | 5 | redact / growth preview / vault 白名单 / blocked_prefixes / 审计 hash |
 | steiner | 2 | 2 | GrowthWatcher / unease 注入 |
 | clock | 1 | 1 | LogicalClock 时段状态机 |
+| web | 6 | 6 | server 启动/dashboard / growths / unease / notifications / dreams / 404+数据流转 |
 
 ---
 
@@ -111,6 +117,12 @@
 | E2E-23 | clock | LogicalClock 时段状态机（issue #26/#34） | ✓ PASS | 0.00s | 0 | 09:00=awake, 22:00=reflect, 03:00=dream_deep |
 | E2E-24 | dream | growth 维度压缩（issue #47 LLM 间接） | ✓ PASS | 0.00s | 1 | 压缩结果 keys=compressed+merged |
 | E2E-25 | pipeline | 完整认知周期 AWAKE→REFLECT→DREAM_LIGHT | ✓ PASS | 75.47s | 10 | awake_output=42, reflect=4650, dream=498 |
+| E2E-26 | web | Web UI server 启动 + dashboard（issue #52） | ✓ PASS | 0.03s | 0 | phase=awake, growth_count=3, endpoints=4 |
+| E2E-27 | web | GET /growths + /growths/<rel>（growth 浏览器, issue #53） | ✓ PASS | 0.00s | 0 | 列表 total=3, 详情 id=test-identity-001 |
+| E2E-28 | web | GET /unease（unease 仪表盘, issue #53） | ✓ PASS | 0.00s | 0 | max_unease=0.82, 7 维度完整 |
+| E2E-29 | web | GET /notifications（owner 通知通道, issue #54） | ✓ PASS | 0.00s | 0 | notifications=2, 首条 type=drift |
+| E2E-30 | web | GET /dreams（dream 日历, issue #53） | ✓ PASS | 0.00s | 0 | dreams=3, levels=light+medium+deep |
+| E2E-31 | web | GET /unknown (404) + 数据流转校验 + server 关闭 | ✓ PASS | 0.50s | 0 | 404 ✓, vault↔HTTP 数据一致, server 已关闭 |
 
 ---
 
@@ -333,20 +345,117 @@
 | I1-I8 | Vault 安全 | E2E-18/19 |
 | J1-J2 | redact | E2E-16/17 |
 | K1-K2 | CLI | (未覆盖，单元测试覆盖) |
-| L1 | Web UI | (未覆盖，单元测试覆盖) |
+| L1-L6 | Web UI（6 端点 + 404） | E2E-26~31 |
 | M1 | Clock | E2E-23 |
 
 ---
 
-## 10 发现与结论
+## 09 Web UI 交互核查
 
-### 10.1 实验结论
+本节梳理 Web UI 层（`mortis/web/`）的 HTTP 交互调用链与数据流转。Web UI 是 **owner 视角**的交互入口——可读 steiner 隐藏层（unease）与 emotional_* 字段，不调 LLM，纯 stdlib `http.server` 实现。
+
+### 9.1 Web UI 调用链
+
+Web UI server 启动链路：`start_web_server(vault_path, port)` [server.py:181] → 构造 `Vault(vault_path)` → 绑定到 `MortisWebHandler.vault` 类变量 → `HTTPServer(("0.0.0.0", port), MortisWebHandler)` → 后台线程 `serve_forever()`。
+
+请求处理链路：`MortisWebHandler.do_GET()` [server.py:47] → `urlparse(self.path).path` 路由分发 → 对应 `_serve_*` 方法 → 读 vault / load_unease / read_notifications → `_send_json(status, data)` [server.py:68] 返回 JSON。
+
+**6 端点调用链**:
+
+| 端点 | 方法 | 调用链 | E2E |
+|------|------|--------|:---:|
+| `/` | `_serve_dashboard` [server.py:78] | `LogicalClock().state()` + `load_unease(vault)` + `vault.list_growths()` → JSON | E2E-26 |
+| `/growths` | `_serve_growths` [server.py:92] | `vault.list_growths()` → 逐条 `vault.read_growth(rel)` → body[:100] 预览 → JSON | E2E-27 |
+| `/growths/<rel>` | `_serve_growth_detail` [server.py:112] | `vault.read_growth(rel_path)` → 返回 id/dimension/body/emotional_*/tags → JSON | E2E-27 |
+| `/unease` | `_serve_unease` [server.py:130] | `load_unease(vault)` → max_unease + per_dimension(7) + last_decay → JSON | E2E-28 |
+| `/notifications` | `_serve_notifications` [server.py:143] | `read_notifications(vault)` [notify.py] → 读 `mortis-subconscious/owner-notify.json` → JSON | E2E-29 |
+| `/dreams` | `_serve_dreams` [server.py:152] | 扫 `mortis-dream-log/<level>/*.md` → 按 level 分组（每 level 最近 20 条）→ JSON | E2E-30 |
+| `/unknown` | `do_GET` else [server.py:64] | `_send_json(404, {"error": "not found"})` → JSON | E2E-31 |
+
+### 9.2 数据流转校验
+
+E2E-31 验证 vault 原文 ↔ HTTP 返回的数据一致性：
+
+1. `vault.write_growth(growth)` → 写入 `mortis-growth/<dim>/<id>.md`（含 frontmatter + body）
+2. `GET /growths` → `vault.list_growths()` 返回 rel_path 列表
+3. `GET /growths/<rel>` → `vault.read_growth(rel)` 解析 frontmatter + body → 返回 JSON
+4. 校验：HTTP 返回的 `body` 字段内容 ⊂ 原始 vault 文件内容（growth parser 会剥离 `#` 标题，用 body 段落校验）
+
+### 9.3 Owner 视角安全边界
+
+Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
+
+| 字段 | Mortis 主人格 | Web UI (owner) | 说明 |
+|------|:---:|:---:|------|
+| `mortis-steiner/` 隐藏层 | ✗ blocked_prefixes 阻断 | ✓ 可读 | owner 需查看 unease 状态 |
+| `emotional_valence/arousal` | ✗ redact 脱敏 | ✓ 可读 | owner 需查看 growth 情感标注 |
+| `dream_level` | ✗ redact 脱敏 | ✓ 可读 | owner 需查看梦境级别 |
+| `owner-notify.json` | ✗ 不读 | ✓ 可读 | owner 通知通道 |
+
+> ⚠ **安全设计**: Web UI 绑定 `0.0.0.0:8765`，owner 需确保端口不暴露到公网。redact 脱敏仅在 LLM 调用链生效，Web UI 直接读 vault 原文返回 owner。
+
+---
+
+## 10 覆盖矩阵
+
+### 10.1 LLM 调用点覆盖
+
+| # | 调用点 | 位置 | E2E 步骤 | 验证状态 |
+|---|--------|------|:--------:|:--------:|
+| 1 | ThinkStep | pipeline/step.py:89 | E2E-04/05/25 | ✓ |
+| 2 | PlanStep | pipeline/step.py:89 | E2E-04/05/25 | ✓ |
+| 3 | ReviewStep | pipeline/step.py:89 | E2E-04/05/25 | ✓ |
+| 4 | VaultReadAgent._summarize | toolagent/vault_read.py:146 | E2E-06 | ✓ |
+| 5 | VaultSearchAgent._semantic_rerank | toolagent/vault_search.py:196 | E2E-07 | ✓ |
+| 6 | VaultStatsAgent._analyze_stats | toolagent/vault_stats.py:132 | E2E-08 | ✓ |
+| 7 | seed_check | dream/seed_check.py:177 | E2E-15 | ✓ |
+| 8 | ReflectExecutor._generate_reflection | reflect/executor.py:231 | E2E-11/25 | ✓ |
+| 9 | score_emotion | reflect/emotion.py:92 | E2E-11/12/13 | ✓ |
+| 10 | associate | dream/associate.py:110 | E2E-12/13 | ✓ |
+| 11 | LightDreamer/MediumDreamer/DeepDreamer | dream/light.py, medium.py, deep.py | E2E-12/13/14 | ✓ |
+
+### 10.2 流程节点覆盖（对照审计报告 §03）
+
+| 节点 | 描述 | E2E 步骤 |
+|------|------|:--------:|
+| A1 | 主循环入口 | E2E-25 |
+| B1-B4 | Think/Plan/Act/Review | E2E-04/05/25 |
+| C1-C10 | Dream 流水线（4/5/7 phase） | E2E-12/13/14 |
+| D1-D10 | Growth 生命周期 | E2E-12/13/14/24 |
+| E1-E3 | Reflect | E2E-11/25 |
+| F1-F3 | ToolAgent | E2E-06/07/08/09/10 |
+| G1-G2 | unease 积累 + 注入 | E2E-21/22 |
+| H1-H2 | drift 检测 | E2E-15 |
+| I1-I8 | Vault 安全 | E2E-18/19 |
+| J1-J2 | redact | E2E-16/17 |
+| K1-K2 | CLI | (未覆盖，单元测试覆盖) |
+| L1-L6 | Web UI（6 端点 + 404） | E2E-26~31 |
+| M1 | Clock | E2E-23 |
+
+### 10.3 Web UI 端点覆盖（issue #52/#53/#54）
+
+| 端点 | 方法 | 功能 | E2E 步骤 | 验证状态 |
+|------|------|------|:--------:|:--------:|
+| `/` | GET | dashboard 仪表盘 (phase+unease+growth 概览) | E2E-26 | ✓ |
+| `/growths` | GET | growth 浏览器 (列表, 50 条预览) | E2E-27 | ✓ |
+| `/growths/<rel>` | GET | growth 详情 (含 emotional_*, owner 视角) | E2E-27 | ✓ |
+| `/unease` | GET | unease 仪表盘 (7 维度 + max + last_decay) | E2E-28 | ✓ |
+| `/notifications` | GET | owner 通知通道 (drift/unease/dream) | E2E-29 | ✓ |
+| `/dreams` | GET | dream 日历 (light/medium/deep 分组) | E2E-30 | ✓ |
+| `/unknown` | GET | 404 路由兜底 | E2E-31 | ✓ |
+| — | — | 数据流转校验 (vault 原文 ↔ HTTP 返回一致) | E2E-31 | ✓ |
+
+---
+
+## 11 发现与结论
+
+### 11.1 实验结论
 
 > **✅ 系统生产可用**
 >
-> 25/25 步骤全部通过，44 次真实 LLM 调用无失败。所有 11 个 LLM 调用点、6 个安全机制、3 级 Dream 流水线、完整认知周期均验证有效。系统在真实 minimax API 环境下端到端通畅。
+> 31/31 步骤全部通过，44 次真实 LLM 调用 + 6 次 Web 交互无失败。所有 11 个 LLM 调用点、6 个安全机制、3 级 Dream 流水线、完整认知周期、6 个 Web UI 端点均验证有效。系统在真实 minimax API 环境下端到端通畅。
 
-### 10.2 性能观察
+### 11.2 性能观察
 
 | 指标 | 观察值 | 说明 |
 |------|--------|------|
