@@ -1,0 +1,354 @@
+"""Mortis Web Chat — 对话服务, 直接与主人格对话。
+
+issue #88: 对话页面 — 参考 OpenUI 设计的对话交互。
+区别于 ``cmd_delegate`` (任务派发, 走完整 pipeline Think→Plan→Act→Review),
+对话是直接与主人格交谈: system[tone + unease + growth] + 多轮历史 → LLM。
+
+ChatService 职责:
+- 维护多个对话 (conversation_id → 消息历史)
+- 构造 system prompt (复用 RuntimeContext 的 tone/unease/growth 注入逻辑)
+- 调用 provider.generate / generate_stream
+- 持久化对话到 vault (mortis-journal/conversations/<cid>.json)
+
+设计要点:
+- 对话 ≠ 任务。对话是闲聊/询问/讨论; 任务是「帮我做 X」走 pipeline。
+- 多轮上下文: 显式保存 user/assistant 消息对, 而非靠 step.output 重建。
+- 流式: 优先 provider.generate_stream, 未实现时 fallback 到 generate 单块。
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Generator
+
+from mortis.provider import Message, StreamChunk
+from mortis.runtime import MasterRuntime
+
+_logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ChatMessage:
+    """对话中的单条消息。"""
+    role: str  # user | assistant | system
+    content: str
+    timestamp: str = field(default_factory=lambda: datetime.now(tz=timezone.utc).isoformat())
+
+
+@dataclass
+class Conversation:
+    """单个对话 — 多轮消息历史。"""
+    conversation_id: str
+    created_at: str = field(default_factory=lambda: datetime.now(tz=timezone.utc).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(tz=timezone.utc).isoformat())
+    messages: list[ChatMessage] = field(default_factory=list)
+    title: str = ""
+
+    def add_user(self, content: str) -> ChatMessage:
+        msg = ChatMessage(role="user", content=content)
+        self.messages.append(msg)
+        self.updated_at = datetime.now(tz=timezone.utc).isoformat()
+        if not self.title:
+            self.title = content[:40]
+        return msg
+
+    def add_assistant(self, content: str) -> ChatMessage:
+        msg = ChatMessage(role="assistant", content=content)
+        self.messages.append(msg)
+        self.updated_at = datetime.now(tz=timezone.utc).isoformat()
+        return msg
+
+    def to_dict(self) -> dict:
+        return {
+            "conversation_id": self.conversation_id,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "title": self.title,
+            "messages": [
+                {"role": m.role, "content": m.content, "timestamp": m.timestamp}
+                for m in self.messages
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Conversation:
+        msgs = [ChatMessage(role=m["role"], content=m["content"], timestamp=m["timestamp"])
+                for m in data.get("messages", [])]
+        return cls(
+            conversation_id=data["conversation_id"],
+            created_at=data.get("created_at", ""),
+            updated_at=data.get("updated_at", ""),
+            title=data.get("title", ""),
+            messages=msgs,
+        )
+
+
+@dataclass
+class ChatResponse:
+    """单次对话响应。"""
+    conversation_id: str
+    message: str
+    role: str = "assistant"
+    elapsed_sec: float = 0.0
+
+
+class ChatService:
+    """对话服务 — 封装 MasterRuntime 提供多轮对话能力。
+
+    用法::
+
+        chat = ChatService(master)
+        resp = chat.send("你好")
+        print(resp.message)
+
+        for chunk in chat.stream("继续聊聊"):
+            print(chunk.delta, end="")
+    """
+
+    def __init__(self, master: MasterRuntime) -> None:
+        self.master = master
+        self._conversations: dict[str, Conversation] = {}
+
+    # ----- 对话管理 -----
+
+    def create_conversation(self) -> Conversation:
+        cid = f"conv-{uuid.uuid4().hex[:10]}"
+        conv = Conversation(conversation_id=cid)
+        self._conversations[cid] = conv
+        self._save_conversation(conv)
+        return conv
+
+    def get_conversation(self, conversation_id: str) -> Conversation | None:
+        if conversation_id in self._conversations:
+            return self._conversations[conversation_id]
+        # 尝试从磁盘加载
+        conv = self._load_conversation(conversation_id)
+        if conv:
+            self._conversations[conversation_id] = conv
+        return conv
+
+    def list_conversations(self) -> list[dict]:
+        """列出所有对话 (摘要, 不含完整消息)。"""
+        # 合并内存 + 磁盘
+        seen: set[str] = set()
+        result: list[dict] = []
+        for cid, conv in self._conversations.items():
+            seen.add(cid)
+            result.append({
+                "conversation_id": conv.conversation_id,
+                "title": conv.title,
+                "created_at": conv.created_at,
+                "updated_at": conv.updated_at,
+                "message_count": len(conv.messages),
+            })
+        # 补充磁盘上的对话
+        for d in self._list_disk_conversations():
+            if d["conversation_id"] not in seen:
+                result.append(d)
+        # 按 updated_at 降序
+        result.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        return result
+
+    def delete_conversation(self, conversation_id: str) -> bool:
+        existed = conversation_id in self._conversations
+        if existed:
+            del self._conversations[conversation_id]
+        p = self._conversation_path(conversation_id)
+        if p.exists():
+            p.unlink()
+            return True
+        return existed
+
+    def get_history(self, conversation_id: str) -> list[dict] | None:
+        conv = self.get_conversation(conversation_id)
+        if conv is None:
+            return None
+        return [
+            {"role": m.role, "content": m.content, "timestamp": m.timestamp}
+            for m in conv.messages
+        ]
+
+    def get_or_create_conversation(self, conversation_id: str | None) -> Conversation:
+        """公开入口 — 获取或新建对话 (不添加消息)。
+
+        供 SSE 流式 handler 在流式开始前预先拿到 conversation_id,
+        以便在第一个 chunk 里带回给前端。
+        """
+        return self._get_or_create(conversation_id)
+
+    # ----- 核心: 发送消息 -----
+
+    def send(
+        self,
+        user_message: str,
+        conversation_id: str | None = None,
+        *,
+        temperature: float = 0.7,
+    ) -> ChatResponse:
+        """发送一条消息, 同步返回响应。
+
+        Args:
+            user_message: 用户消息文本。
+            conversation_id: 对话 ID。None = 新建对话。
+            temperature: 采样温度。
+
+        Returns:
+            ChatResponse 含 assistant 回复。
+        """
+        conv = self._get_or_create(conversation_id)
+        conv.add_user(user_message)
+
+        messages = self._build_messages(conv)
+        start = datetime.now(tz=timezone.utc)
+        reply = self.master.provider.generate(messages, temperature=temperature)
+        elapsed = (datetime.now(tz=timezone.utc) - start).total_seconds()
+
+        conv.add_assistant(reply.content)
+        self._save_conversation(conv)
+
+        return ChatResponse(
+            conversation_id=conv.conversation_id,
+            message=reply.content,
+            elapsed_sec=elapsed,
+        )
+
+    def stream(
+        self,
+        user_message: str,
+        conversation_id: str | None = None,
+        *,
+        temperature: float = 0.7,
+    ) -> Generator[StreamChunk, None, None]:
+        """流式发送消息, 逐块 yield StreamChunk。
+
+        provider 未实现 generate_stream 时 fallback 到 generate 单块。
+        流式完成后, 完整回复仍会写入对话历史。
+        """
+        conv = self._get_or_create(conversation_id)
+        conv.add_user(user_message)
+        messages = self._build_messages(conv)
+
+        provider = self.master.provider
+        full_content = ""
+        if hasattr(provider, "generate_stream"):
+            for chunk in provider.generate_stream(messages, temperature=temperature):
+                full_content += chunk.delta
+                yield chunk
+        else:
+            # fallback: 非流式 → 单块
+            reply = provider.generate(messages, temperature=temperature)
+            full_content = reply.content
+            yield StreamChunk(delta=reply.content, finish_reason="stop")
+
+        conv.add_assistant(full_content)
+        self._save_conversation(conv)
+
+    # ----- 消息构造 -----
+
+    def _build_messages(self, conv: Conversation) -> list[Message]:
+        """构建发给 provider 的消息列表。
+
+        - system[0]: seed tone (主人格语气)
+        - system[1] (可选): unease 潜台词 (steiner 隐藏层)
+        - system[2] (可选): growth 摘要 (相关 growth 上下文)
+        - user/assistant: 对话历史
+        """
+        from mortis.memory import Thread
+        # 借用 RuntimeContext 的注入逻辑 (tone / unease / growth)
+        # 用一个内存中的临时 thread (不持久化), 仅为了访问 growth_context_for_task
+        last_user = ""
+        for m in reversed(conv.messages):
+            if m.role == "user":
+                last_user = m.content
+                break
+        thread = Thread(
+            thread_id=f"ephemeral-{conv.conversation_id}",
+            session_id=self.master.session.session_id,
+            task=last_user or conv.title or "",
+        )
+        ctx = self.master.make_context(thread)
+
+        msgs: list[Message] = [
+            Message(role="system", content=self.master.seed.get_dimension("tone")),
+        ]
+        # unease 潜台词
+        unease_text = ctx.unease_prompt_for_injection()
+        if unease_text:
+            msgs.append(Message(role="system", content=unease_text))
+        # growth 上下文 (基于最近 user 消息检索)
+        last_user = ""
+        for m in reversed(conv.messages):
+            if m.role == "user":
+                last_user = m.content
+                break
+        growth_prompt = ctx.growth_context_for_task(last_user)
+        if growth_prompt:
+            msgs.append(Message(role="system", content=growth_prompt))
+
+        # 对话历史 (跳过刚加的 user 消息? 不跳过 — provider 需要看到完整历史)
+        for m in conv.messages:
+            msgs.append(Message(role=m.role, content=m.content))
+        return msgs
+
+    def _get_or_create(self, conversation_id: str | None) -> Conversation:
+        if conversation_id:
+            conv = self.get_conversation(conversation_id)
+            if conv is None:
+                conv = self.create_conversation()
+            return conv
+        return self.create_conversation()
+
+    # ----- 持久化 -----
+
+    def _conversations_dir(self) -> Path:
+        d = self.master.vault.root / "mortis-journal" / "conversations"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _conversation_path(self, conversation_id: str) -> Path:
+        return self._conversations_dir() / f"{conversation_id}.json"
+
+    def _save_conversation(self, conv: Conversation) -> None:
+        try:
+            p = self._conversation_path(conv.conversation_id)
+            p.write_text(
+                json.dumps(conv.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            _logger.warning("save conversation %s failed: %s", conv.conversation_id, e)
+
+    def _load_conversation(self, conversation_id: str) -> Conversation | None:
+        p = self._conversation_path(conversation_id)
+        if not p.exists():
+            return None
+        try:
+            return Conversation.from_dict(json.loads(p.read_text(encoding="utf-8")))
+        except Exception as e:
+            _logger.warning("load conversation %s failed: %s", conversation_id, e)
+            return None
+
+    def _list_disk_conversations(self) -> list[dict]:
+        d = self._conversations_dir()
+        result: list[dict] = []
+        for f in sorted(d.glob("*.json")):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                result.append({
+                    "conversation_id": data["conversation_id"],
+                    "title": data.get("title", ""),
+                    "created_at": data.get("created_at", ""),
+                    "updated_at": data.get("updated_at", ""),
+                    "message_count": len(data.get("messages", [])),
+                })
+            except Exception:
+                pass
+        return result
+
+
+__all__ = ["ChatMessage", "Conversation", "ChatResponse", "ChatService"]

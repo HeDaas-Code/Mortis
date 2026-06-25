@@ -269,11 +269,24 @@ def cmd_web(args: argparse.Namespace) -> int:
     """启动 Web UI server。
 
     issue #52: owner 视角的 HTTP 浏览接口 (growth / dream / unease / notifications)。
+    issue #88: 传入 --provider 时启用对话页面 (ChatService + /api/chat)。
     阻塞直到 Ctrl-C (KeyboardInterrupt)。
     """
     from mortis.web.server import start_web_server
-    server = start_web_server(vault_path=str(args.vault), port=args.port)
+    from mortis.web.chat import ChatService
+
+    chat_service = None
+    if args.provider and args.provider != "none":
+        master = _build_master(args.vault, args.seed, args.provider)
+        chat_service = ChatService(master)
+        print(f"对话服务已启用 (provider={args.provider})")
+
+    server = start_web_server(
+        vault_path=str(args.vault), port=args.port, chat_service=chat_service,
+    )
     print(f"Web UI: http://localhost:{args.port}")
+    if chat_service:
+        print(f"  对话页面: http://localhost:{args.port}/chat")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -397,12 +410,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # web (issue #52: Web UI server)
-    p_web = sub.add_parser("web", help="启动 Web UI server (growth/dream/unease 浏览)")
+    p_web = sub.add_parser("web", help="启动 Web UI server (growth/dream/unease 浏览 + 对话)")
     p_web.add_argument(
         "--port", type=int, default=8765,
         help="监听端口（default: 8765）",
     )
     p_web.add_argument("--vault", default="vault", help="vault 根目录")
+    p_web.add_argument(
+        "--provider", default="none",
+        choices=["none", "auto", "minimax", "mock"],
+        help="LLM provider（default: none=不启用对话; 传入则启用 /chat 对话页面）",
+    )
 
     return parser
 
