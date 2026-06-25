@@ -381,6 +381,7 @@ class ExperimentEnv:
         self._web_server: HTTPServer | None = None
         self._web_base_url: str | None = None
         self._web_thread: threading.Thread | None = None
+        self.chat_service = None  # E2E-39~43: 对话服务 (with_chat 启动时赋值)
 
     def set_step_id(self, step_id: str) -> None:
         """设置当前步骤 ID, 用于 LLM 日志关联。"""
@@ -473,17 +474,28 @@ Mortis-E2E。测试用人格，简短直接。
         self.stop_web()
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    # ---- Web UI server 生命周期 (E2E-26~31) ----
+    # ---- Web UI server 生命周期 (E2E-26~31, E2E-39~43) ----
 
-    def start_web(self) -> str:
+    def start_web(self, *, with_chat: bool = False) -> str:
         """启动 Web UI server (后台线程, port=0 自动分配空闲端口)。
 
         幂等 — 重复调用返回已运行的 server base_url。
+        传 ``with_chat=True`` 时附加 ChatService (启用 /chat 对话页面)。
+        若 server 已启动但未带 chat, 需先 stop_web 再 start_web(with_chat=True)。
         """
         if self._web_server is not None:
             return self._web_base_url  # type: ignore[return-value]
         from mortis.web.server import start_web_server
-        self._web_server = start_web_server(vault_path=str(self.vault_root), port=0)
+        chat_service = None
+        if with_chat:
+            from mortis.web.chat import ChatService
+            chat_service = ChatService(self.master)
+            self.chat_service = chat_service
+        else:
+            self.chat_service = None
+        self._web_server = start_web_server(
+            vault_path=str(self.vault_root), port=0, chat_service=chat_service,
+        )
         actual_port = self._web_server.server_address[1]
         self._web_base_url = f"http://127.0.0.1:{actual_port}"
         self._web_thread = threading.Thread(
@@ -1417,6 +1429,36 @@ def _get_html(base_url: str, path: str) -> tuple[int, str]:
     return status, body
 
 
+def _post_json(base_url: str, path: str, body: dict) -> tuple[int, dict]:
+    """发 POST 请求 (JSON body), 返回 (status_code, parsed_json)。"""
+    url = base_url + path
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8"))
+    except HTTPError as e:
+        return e.code, json.loads(e.read().decode("utf-8"))
+
+
+def _post_stream(base_url: str, path: str, body: dict) -> tuple[int, str]:
+    """POST SSE 端点, 返回 (status, raw_text)。"""
+    url = base_url + path
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, method="POST",
+        headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status, resp.read().decode("utf-8")
+    except HTTPError as e:
+        return e.code, e.read().decode("utf-8")
+
+
 def step_26_web_server_dashboard(env: ExperimentEnv, report: ExperimentReport) -> None:
     """E2E-26: Web UI server 启动 + HTML dashboard 页面 (issue #52)。"""
     start = time.monotonic()
@@ -2014,16 +2056,315 @@ def step_38_retry_provider(env: ExperimentEnv, report: ExperimentReport) -> None
 
 
 # ============================================================================
+# E2E-39~43: 对话服务 + Gateway 渠道 + 路径遍历防护 (issue #88-#90)
+# ============================================================================
+
+
+def step_39_chat_service(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-39: ChatService 多轮对话 + 人格注入 + 持久化 (issue #88)。"""
+    start = time.monotonic()
+    try:
+        from mortis.web.chat import ChatService
+        svc = ChatService(env.master)
+        # 1. 新建对话 + 发送
+        resp1 = svc.send("你好,介绍下自己")
+        ok_send = (
+            resp1.conversation_id.startswith("conv-")
+            and len(resp1.message) > 0
+            and resp1.elapsed_sec >= 0
+        )
+        cid = resp1.conversation_id
+        # 2. 多轮续接
+        resp2 = svc.send("继续聊聊", cid)
+        ok_multi_turn = resp2.conversation_id == cid
+        # 3. 历史持久化
+        history = svc.get_history(cid)
+        ok_history = (
+            history is not None
+            and len(history) == 4  # 2 user + 2 assistant
+            and history[0]["role"] == "user"
+            and history[1]["role"] == "assistant"
+        )
+        # 4. 人格注入验证 — messages[0] 是 seed tone
+        conv = svc.get_conversation(cid)
+        msgs = svc._build_messages(conv)
+        ok_persona = (
+            len(msgs) >= 2
+            and msgs[0].role == "system"
+            and len(msgs[0].content) > 0  # tone
+        )
+        # 5. 磁盘文件存在
+        disk_path = env.vault_root / "mortis-journal" / "conversations" / f"{cid}.json"
+        ok_disk = disk_path.exists()
+        ok = ok_send and ok_multi_turn and ok_history and ok_persona and ok_disk
+        report.add(StepResult(
+            step_id="E2E-39", name="ChatService 多轮对话 + 人格注入 + 持久化 (issue #88)",
+            category="chat", success=ok, elapsed_sec=time.monotonic() - start,
+            detail=f"send={ok_send}, multi_turn={ok_multi_turn}, history={ok_history} "
+                   f"(msgs={len(history)}), persona={ok_persona} (tone注入), disk={ok_disk}",
+            llm_calls=2,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-39", name="ChatService 多轮对话 + 人格注入 + 持久化 (issue #88)",
+            category="chat", success=False, elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_40_chat_sse_stream(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-40: Chat SSE 流式端点 + OpenUI 风格 HTML 页面 (issue #88)。"""
+    start = time.monotonic()
+    try:
+        # 重启 web server 带 chat_service
+        env.stop_web()
+        base_url = env.start_web(with_chat=True)
+        # 1. HTML 对话页面
+        html_status, html_body = _get_html(base_url, "/chat")
+        ok_html = (
+            html_status == 200
+            and "chat-layout" in html_body
+            and "chat-sidebar" in html_body
+            and "chat-messages" in html_body
+            and "chat-input" in html_body
+            and "sendMessage" in html_body
+            and "newConversation" in html_body
+        )
+        # 2. 非流式 POST /api/chat
+        api_status, api_data = _post_json(base_url, "/api/chat", {
+            "message": "E2E 测试消息",
+        })
+        ok_api = (
+            api_status == 200
+            and api_data["conversation_id"].startswith("conv-")
+            and len(api_data["message"]) > 0
+            and api_data["role"] == "assistant"
+        )
+        cid = api_data.get("conversation_id", "")
+        # 3. SSE 流式 POST /api/chat/stream
+        stream_status, stream_body = _post_stream(base_url, "/api/chat/stream", {
+            "message": "流式续接", "conversation_id": cid,
+        })
+        ok_stream = (
+            stream_status == 200
+            and "data: " in stream_body
+            and "delta" in stream_body
+            and "finish_reason" in stream_body
+            and "done" in stream_body
+            and cid in stream_body  # conversation_id 在首个 chunk 返回
+        )
+        # 4. 对话列表 API
+        list_status, list_data = _get_json(base_url, "/api/conversations")
+        ok_list = (
+            list_status == 200
+            and list_data["total"] >= 1
+            and any(c["conversation_id"] == cid for c in list_data["conversations"])
+        )
+        ok = ok_html and ok_api and ok_stream and ok_list
+        report.add(StepResult(
+            step_id="E2E-40", name="Chat SSE 流式 + OpenUI HTML 页面 (issue #88)",
+            category="chat", success=ok, elapsed_sec=time.monotonic() - start,
+            detail=f"html={ok_html} (chat-layout+sidebar+input+JS), "
+                   f"api={ok_api} (cid={cid[:16]}...), stream={ok_stream} (SSE data:), "
+                   f"list={ok_list} (total={list_data.get('total')})",
+            llm_calls=2,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-40", name="Chat SSE 流式 + OpenUI HTML 页面 (issue #88)",
+            category="chat", success=False, elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_41_gateway_routing(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-41: Gateway 渠道路由 — InboundMessage → ChatService → OutboundMessage (issue #89)。"""
+    start = time.monotonic()
+    try:
+        from mortis.gateway import Gateway, WebChannel, InboundMessage
+        from mortis.web.chat import ChatService
+        svc = ChatService(env.master)
+        gw = Gateway(svc)
+        gw.register_channel(WebChannel())
+        # 1. 首次消息 (无 conversation_id → 按 sender 映射新建)
+        msg1 = InboundMessage(channel="web", sender_id="user-e2e-1", content="你好")
+        out1 = gw.handle_inbound(msg1)
+        ok_first = (
+            out1.channel == "web"
+            and out1.recipient_id == "user-e2e-1"
+            and len(out1.content) > 0
+            and out1.conversation_id.startswith("conv-")
+        )
+        cid1 = out1.conversation_id
+        # 2. 同一 sender 第二条消息 → 复用同一 conversation
+        msg2 = InboundMessage(channel="web", sender_id="user-e2e-1", content="继续")
+        out2 = gw.handle_inbound(msg2)
+        ok_reuse = out2.conversation_id == cid1
+        # 3. 不同 sender → 新建对话
+        msg3 = InboundMessage(channel="web", sender_id="user-e2e-2", content="新用户")
+        out3 = gw.handle_inbound(msg3)
+        ok_isolation = out3.conversation_id != cid1
+        # 4. 渠道注册表
+        ok_channels = "web" in gw.list_channels()
+        # 5. 流式 handle_inbound_stream
+        cid_stream, gen = gw.handle_inbound_stream(InboundMessage(
+            channel="web", sender_id="user-e2e-3", content="流式测试",
+        ))
+        chunks = list(gen)
+        ok_stream = (
+            cid_stream.startswith("conv-")
+            and len(chunks) > 0
+            and all(hasattr(c, "delta") for c in chunks)
+        )
+        ok = ok_first and ok_reuse and ok_isolation and ok_channels and ok_stream
+        report.add(StepResult(
+            step_id="E2E-41", name="Gateway 渠道路由 — Inbound→ChatService→Outbound (issue #89)",
+            category="gateway", success=ok, elapsed_sec=time.monotonic() - start,
+            detail=f"first={ok_first} (cid={cid1[:16]}...), reuse={ok_reuse} (同sender复用), "
+                   f"isolation={ok_isolation} (不同sender隔离), channels={ok_channels}, "
+                   f"stream={ok_stream} (chunks={len(chunks)})",
+            llm_calls=4,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-41", name="Gateway 渠道路由 — Inbound→ChatService→Outbound (issue #89)",
+            category="gateway", success=False, elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_42_gateway_multi_channel(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-42: Gateway 多渠道隔离 + 主动推送渠道 (issue #89)。"""
+    start = time.monotonic()
+    try:
+        from mortis.gateway import Gateway, InboundMessage, OutboundMessage
+        from mortis.web.chat import ChatService
+
+        # 自定义主动推送渠道 (模拟微信/Telegram)
+        sent: list[OutboundMessage] = []
+
+        class SpyChannel:
+            name = "spy"
+            def send(self, outbound: OutboundMessage) -> None:
+                sent.append(outbound)
+            def start(self) -> None:
+                pass
+            def stop(self) -> None:
+                pass
+
+        svc = ChatService(env.master)
+        gw = Gateway(svc)
+        from mortis.gateway import WebChannel
+        gw.register_channel(WebChannel())
+        gw.register_channel(SpyChannel())
+        # 1. web 渠道消息 → WebChannel.send 是 no-op
+        out_web = gw.handle_inbound(InboundMessage(
+            channel="web", sender_id="w1", content="web 消息",
+        ))
+        ok_web = out_web.channel == "web" and len(out_web.content) > 0
+        # 2. spy 渠道消息 → SpyChannel.send 被调用 (主动推送)
+        sent.clear()
+        out_spy = gw.handle_inbound(InboundMessage(
+            channel="spy", sender_id="s1", content="spy 消息",
+        ))
+        ok_push = len(sent) == 1 and sent[0].content == out_spy.content
+        # 3. 两渠道 sender 隔离
+        ok_isolation = out_web.conversation_id != out_spy.conversation_id
+        # 4. start_all / stop_all 不报错
+        gw.start_all()
+        gw.stop_all()
+        ok_lifecycle = True
+        # 5. 未知渠道 → 不推送但回复仍生成
+        out_unknown = gw.handle_inbound(InboundMessage(
+            channel="unknown", sender_id="u1", content="未知渠道",
+        ))
+        ok_unknown = len(out_unknown.content) > 0
+        ok = ok_web and ok_push and ok_isolation and ok_lifecycle and ok_unknown
+        report.add(StepResult(
+            step_id="E2E-42", name="Gateway 多渠道隔离 + 主动推送 (issue #89)",
+            category="gateway", success=ok, elapsed_sec=time.monotonic() - start,
+            detail=f"web={ok_web} (no-op), push={ok_push} (SpyChannel.send被调), "
+                   f"isolation={ok_isolation}, lifecycle={ok_lifecycle}, "
+                   f"unknown_channel={ok_unknown} (回复仍生成)",
+            llm_calls=3,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-42", name="Gateway 多渠道隔离 + 主动推送 (issue #89)",
+            category="gateway", success=False, elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_43_path_traversal_guard(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-43: 路径遍历防护 — conversation_id 校验 (issue #90)。
+
+    漏洞: conversation_id 从 URL/body 直接拼路径, 未校验 → 可读/删任意 .json。
+    修复: is_valid_conversation_id 只允许 [a-zA-Z0-9-]。
+    """
+    start = time.monotonic()
+    try:
+        from mortis.web.chat import ChatService, is_valid_conversation_id
+        svc = ChatService(env.master)
+        # 1. 校验函数
+        ok_valid = is_valid_conversation_id("conv-abc123")
+        ok_invalid = (
+            not is_valid_conversation_id("../../etc/passwd")
+            and not is_valid_conversation_id("../steiner/unease")
+            and not is_valid_conversation_id("")
+            and not is_valid_conversation_id("a/b")
+            and not is_valid_conversation_id("a.b")
+        )
+        # 2. get_conversation 拒绝 traversal (返回 None, 不读磁盘)
+        ok_get = svc.get_conversation("../../secret") is None
+        # 3. get_history 拒绝 traversal
+        ok_history = svc.get_history("../../etc/passwd") is None
+        # 4. delete_conversation 拒绝 traversal (不删文件)
+        victim_dir = env.vault_root / "mortis-steiner"
+        victim_dir.mkdir(parents=True, exist_ok=True)
+        victim = victim_dir / "unease.json"
+        victim.write_text('{"victim": true}', encoding="utf-8")
+        ok_delete = (
+            svc.delete_conversation("../../mortis-steiner/unease") is False
+            and victim.exists()
+        )
+        # 5. send 传恶意 cid → 新建安全对话 (不沿用恶意 ID)
+        resp = svc.send("hi", "../../etc/passwd")
+        ok_send_safe = (
+            resp.conversation_id != "../../etc/passwd"
+            and resp.conversation_id.startswith("conv-")
+        )
+        ok = ok_valid and ok_invalid and ok_get and ok_history and ok_delete and ok_send_safe
+        report.add(StepResult(
+            step_id="E2E-43", name="路径遍历防护 — conversation_id 校验 (issue #90)",
+            category="security", success=ok, elapsed_sec=time.monotonic() - start,
+            detail=f"validate={ok_valid and ok_invalid}, get={ok_get}, "
+                   f"history={ok_history}, delete={ok_delete} (victim存活), "
+                   f"send_safe={ok_send_safe} (cid={resp.conversation_id[:16]}...)",
+            llm_calls=1,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-43", name="路径遍历防护 — conversation_id 校验 (issue #90)",
+            category="security", success=False, elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+# ============================================================================
 # 主流程
 # ============================================================================
 
 def main() -> int:
-    if not os.environ.get("MINIMAX_API_KEY"):
-        print("ERROR: MINIMAX_API_KEY 环境变量未设置")
+    use_mock = "--mock" in sys.argv
+    has_key = bool(os.environ.get("MINIMAX_API_KEY"))
+    if not has_key and not use_mock:
+        print("ERROR: MINIMAX_API_KEY 环境变量未设置 (或用 --mock 走 MockProvider)")
         return 1
 
     print("=" * 70)
-    print("Mortis v3 全项 E2E 生产级实验 — 真实 minimax LLM 调用链")
+    mode = "MockProvider (离线)" if not has_key else "真实 minimax LLM 调用链"
+    print(f"Mortis v3 全项 E2E 生产级实验 — {mode}")
     print("=" * 70)
     print()
 
@@ -2081,6 +2422,12 @@ def main() -> int:
         step_36_streaming_output,
         step_37_circuit_breaker,
         step_38_retry_provider,
+        # E2E-39~43: 对话服务 + Gateway 渠道 + 路径遍历防护 (issue #88-#90)
+        step_39_chat_service,
+        step_40_chat_sse_stream,
+        step_41_gateway_routing,
+        step_42_gateway_multi_channel,
+        step_43_path_traversal_guard,
     ]
 
     for i, step_fn in enumerate(steps, 1):

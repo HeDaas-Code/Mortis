@@ -3,7 +3,7 @@
     "call_id": 1,
     "step_id": "E2E-02",
     "method": "generate",
-    "timestamp": "2026-06-25T09:20:08.733450+00:00",
+    "timestamp": "2026-06-25T15:58:09.879455+00:00",
     "messages": [
       {
         "role": "system",
@@ -16,18 +16,25 @@
     ],
     "prompt": "",
     "system": "",
-    "response": "<think>\n用户要求用10个字以内描述当前状态。这应该是指我的运行状态或者对话状态。\n</think>\n正常运行中。",
-    "elapsed_sec": 1.394,
+    "response": "[mock:用 10 个字以内描述当前状态]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": 50,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 33,
+    "output_length": 22,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 2,
     "step_id": "E2E-03",
     "method": "async_generate_text",
-    "timestamp": "2026-06-25T09:20:09.918912+00:00",
+    "timestamp": "2026-06-25T15:58:09.879727+00:00",
     "messages": [
       {
         "role": "system",
@@ -40,18 +47,25 @@
     ],
     "prompt": "回答：2+2=?",
     "system": "数学助手",
-    "response": "<think>\nThe user is asking a simple math question: 2+2=?\n</think>\n2+2=4",
-    "elapsed_sec": 1.185,
+    "response": "[mock:回答：2+2=?]",
+    "elapsed_sec": 0.0,
     "temperature": 0.1,
     "max_tokens": 100,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 24,
+    "output_length": 15,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 3,
     "step_id": "E2E-04",
     "method": "generate",
-    "timestamp": "2026-06-25T09:20:12.366875+00:00",
+    "timestamp": "2026-06-25T15:58:09.882740+00:00",
     "messages": [
       {
         "role": "system",
@@ -64,18 +78,25 @@
     ],
     "prompt": "",
     "system": "",
-    "response": "<think>\nThe user asks to introduce themselves in one sentence, but actually the task is to analyze whether to dispatch a sub-agent for the given task \"用一句话介绍你自己\" (Introduce yourself in one sentence).\n\nThis is a simple question that requires a direct answer. No vault file lookup needed, no multi-step execution.\n</think>\nsimple: 一句话自我介绍，无需查文件或多步骤，直接回复即可。",
-    "elapsed_sec": 2.444,
+    "response": "[mock:分析以下任务，决定是否需要派 sub 智能体：]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 152,
+    "output_length": 30,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 4,
     "step_id": "E2E-04",
     "method": "generate",
-    "timestamp": "2026-06-25T09:20:15.466687+00:00",
+    "timestamp": "2026-06-25T15:58:09.884891+00:00",
     "messages": [
       {
         "role": "system",
@@ -88,18 +109,25 @@
     ],
     "prompt": "",
     "system": "",
-    "response": "<think>\nThe user wants me to analyze a simple task: \"用一句话介绍你自己\" (Introduce yourself in one sentence).\n\nI need to think about:\n1. Does this task need to check the vault?\n2. Is this task simple enough to do directly, or does it need to be broken down?\n3. Does it need to dispatch a sub-agent?\n\nLet me think briefly and give a concise analysis.\n</think>\n**分析：**\n\n1. **查 vault？** — 不需要。自我介绍是通用任务，没有个性化记忆需求。\n2. **拆解？** — 不需要。一句话即终态，零子步骤。\n3. **派 sub？** — 不需要。轻量任务，主线程直接生成更快，避免调度开销。\n\n**行动建议：** 直接回答，一句话搞定。",
-    "elapsed_sec": 3.075,
+    "response": "[mock:分析这个任务：用一句话介绍你自己]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 106,
+    "output_length": 23,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 5,
     "step_id": "E2E-04",
     "method": "generate",
-    "timestamp": "2026-06-25T09:20:17.431583+00:00",
+    "timestamp": "2026-06-25T15:58:09.887209+00:00",
     "messages": [
       {
         "role": "system",
@@ -107,7 +135,7 @@
       },
       {
         "role": "assistant",
-        "content": "<think>\nThe user wants me to analyze a simple task: \"用一句话介绍你自己\" (Introduce yourself in one sentence).\n\nI need to think about:\n1. Does this task need to check the vault?\n2. Is this task simple enough to do directly, or does it need to be broken down?\n3. Does it need to dispatch a sub-agent?\n\nLet me think briefly and give a concise analysis.\n</think>\n**分析：**\n\n1. **查 vault？** — 不需要。自我介绍是通用任务，没有个性化记忆需求。\n2. **拆解？** — 不需要。一句话即终态，零子步骤。\n3. **派 sub？** — 不需要。轻量任务，主线程直接生成更快，避免调度开销。\n\n**行动建议：** 直接回答，一句话搞定。"
+        "content": "[mock:分析这个任务：用一句话介绍你自己]"
       },
       {
         "role": "user",
@@ -116,18 +144,25 @@
     ],
     "prompt": "",
     "system": "",
-    "response": "<think>\nThe user wants me to introduce myself in one sentence, following the previous analysis which said to just answer directly.\n</think>\n我是 MiniMax-M3，一个由 MiniMax 开发的 AI 基础模型助手。",
-    "elapsed_sec": 1.962,
+    "response": "[mock:执行任务：用一句话介绍你自己]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 44,
+    "output_length": 21,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 6,
     "step_id": "E2E-05",
     "method": "generate",
-    "timestamp": "2026-06-25T09:20:18.497910+00:00",
+    "timestamp": "2026-06-25T15:58:09.890684+00:00",
     "messages": [
       {
         "role": "system",
@@ -140,18 +175,25 @@
     ],
     "prompt": "",
     "system": "",
-    "response": "<think>\nThe task is to read a single vault file and summarize its content. This is a single-step operation, not requiring multiple file reads or multi-step execution.\n</think>\nsimple: 单文件读取并总结，无需多步骤或多文件查询。",
-    "elapsed_sec": 1.062,
+    "response": "[mock:分析以下任务，决定是否需要派 sub 智能体：]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 187,
+    "output_length": 30,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 7,
     "step_id": "E2E-05",
     "method": "generate",
-    "timestamp": "2026-06-25T09:20:28.053993+00:00",
+    "timestamp": "2026-06-25T15:58:09.892777+00:00",
     "messages": [
       {
         "role": "system",
@@ -164,18 +206,25 @@
     ],
     "prompt": "",
     "system": "",
-    "response": "<think>\nThe user is asking me to analyze a task: \"读取 vault 中的 test-identity-001 growth 文件并总结内容\" (Read the test-identity-001 growth file in vault and summarize its content).\n\nThey want me to think about:\n1. Does this task require checking vault?\n2. Is this task simple enough to complete directly, or does it need to be broken down?\n3. Does it need to dispatch a sub?\n\nLet me analyze this concisely.\n\n1. 是的，需要查 vault - 任务明确说要读取 vault 中的文件\n2. 这是一个两步任务：先读文件，再总结内容。相对简单，但涉及文件读取\n3. 不一定需要派 sub - 如果我能直接访问 vault 并读取文件，可以自己完成\n\n让我给出简短的分析。\n</think>\n## 分析\n\n1. **需要查 vault 吗？** — 是的。任务明确指定了\"vault 中的 test-identity-001 growth 文件\"，必须先定位并读取该文件才能总结。\n\n2. **简单还是需拆解？** — 中等简单。逻辑上是**两步**：\n   - 定位并读取文件（需知道 vault 路径/结构）\n   - 阅读后总结内容\n   \n   如果我能直接访问 vault 路径，一步完成即可。\n\n3. **需要派 sub 吗？** — 建议**不派**。原因：\n   - 任务范围明确（单一文件）\n   - 读取+总结是连贯操作，分派反而增加开销和上下文传递成本\n   - 只有当文件极大或涉及多个交叉文件时，才值得分派\n\n## 行动建议\n\n直接执行：尝试读取 `vault/test-identity-001/growth` 相关路径（如有目录结构先 ls），读完后用 3-5 句话输出摘要。若文件不存在或路径不明确，反馈给用户确认。\n\n需要我现在去读取吗？",
-    "elapsed_sec": 9.553,
+    "response": "[mock:分析这个任务：读取 vault 中的 test-identi]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 141,
+    "output_length": 37,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 8,
     "step_id": "E2E-05",
     "method": "generate",
-    "timestamp": "2026-06-25T09:20:29.434676+00:00",
+    "timestamp": "2026-06-25T15:58:09.894915+00:00",
     "messages": [
       {
         "role": "system",
@@ -183,7 +232,7 @@
       },
       {
         "role": "assistant",
-        "content": "<think>\nThe user is asking me to analyze a task: \"读取 vault 中的 test-identity-001 growth 文件并总结内容\" (Read the test-identity-001 growth file in vault and summarize its content).\n\nThey want me to think about:\n1. Does this task require checking vault?\n2. Is this task simple enough to complete directly, or does it need to be broken down?\n3. Does it need to dispatch a sub?\n\nLet me analyze this concisely.\n\n1. 是的，需要查 vault - 任务明确说要读取 vault 中的文件\n2. 这是一个两步任务：先读文件，再总结内容。相对简单，但涉及文件读取\n3. 不一定需要派 sub - 如果我能直接访问 v"
+        "content": "[mock:分析这个任务：读取 vault 中的 test-identi]"
       },
       {
         "role": "user",
@@ -192,18 +241,25 @@
     ],
     "prompt": "",
     "system": "",
-    "response": "<think>\nThe user wants me to execute the task: read the test-identity-001 growth file in vault and summarize its content.\n\nLet me first check the vault directory structure to find the file.\n</think>\n执行中，先定位文件。",
-    "elapsed_sec": 1.378,
+    "response": "[mock:执行任务：读取 vault 中的 test-identity]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 93,
+    "output_length": 37,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 9,
     "step_id": "E2E-06",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:20:31.764763+00:00",
+    "timestamp": "2026-06-25T15:58:09.897104+00:00",
     "messages": [
       {
         "role": "system",
@@ -216,18 +272,25 @@
     ],
     "prompt": "文本内容:\n---\nid: test-identity-001\ndimension: identity\nconfidence: 0.8\ncreated_at: 2026-06-25T00:00:00Z\nlast_validated: 2026-06-25T00:00:00Z\nsource_sessions:\n  - e2e-test\ndream_level: REDACTED\nemotional_valence: REDACTED\nemotional_arousal: REDACTED\ntags:\n  - test\n  - identity\n---\n# 测试 identity growth\n\n这是 E2E 测试用的 growth 文件。\n\n关键词：身份认同。\n\n请生成不超过 80 字的摘要。",
     "system": "你是一个文本摘要助手。请将以下文本浓缩成指定长度的摘要。\n\n要求:\n1. 保持原意不变\n2. 提取关键信息\n3. 语言流畅自然\n4. 不超过指定长度\n",
-    "response": "<think>The user wants me to summarize the given text in no more than 80 characters (Chinese). Let me analyze the content:\n\n- It's a test file for E2E testing\n- It's about identity (身份认同)\n- Contains metadata for a test identity item\n- It's a growth file for identity dimension\n\nLet me create a concise summary in Chinese, no more than 80 characters.</think>\n\n这是一份E2E测试用的identity维度growth文件，主题为身份认同，包含基础元数据（置信度0.8）及测试标签，用于验证身份维度功能。",
-    "elapsed_sec": 2.327,
+    "response": "[mock:文本内容:]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 850,
+    "output_length": 12,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 10,
     "step_id": "E2E-07",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:20:37.018166+00:00",
+    "timestamp": "2026-06-25T15:58:09.899232+00:00",
     "messages": [
       {
         "role": "system",
@@ -240,18 +303,25 @@
     ],
     "prompt": "查询: 身份\n\n文档列表:\n1. [test-identity-001]\n这是 E2E 测试用的 growth 文件。\n\n关键词：身份认同。\n\n请输出排序结果和摘要。",
     "system": "你是一个语义搜索助手。请对以下文档列表按照与查询的语义相关性进行排序，并提供一个简短的摘要。\n\n输出格式:\nSCORE: <文档序号> <相似度分数0-1>\n...\nSUMMARY: <对相关文档的简短摘要>\n",
-    "response": "<think>\nThe user is asking me to rank documents by semantic relevance to the query \"身份\" (identity) and provide a summary.\n\nLet me analyze:\n- Query: \"身份\" (identity)\n- Document 1: [test-identity-001] - Contains the keyword \"身份认同\" (identity recognition/identity) and is an E2E test growth file\n\nThe document is directly relevant to \"身份\" as it explicitly mentions \"身份认同\" (identity). This is a very strong match semantically.\n\nI need to output in the specified format with SCORE and SUMMARY.\n</think>\nSCORE: 1 0.92\n\nSUMMARY: 文档 [test-identity-001] 是一份用于 E2E 测试的 growth 文件，其关键词明确包含\"身份认同\"，与查询\"身份\"在语义上高度相关。\"身份\"一词在中文语境中常与\"身份认同\"紧密关联，该文档直接涉及身份相关的概念，因此与查询具有强语义匹配。不过，由于该文档本质上是一份测试文件，内容较为简短且缺乏深入的语义扩展，因此未给予满分。",
-    "elapsed_sec": 5.251,
+    "response": "[mock:查询: 身份]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 376,
+    "output_length": 13,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 11,
     "step_id": "E2E-08",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:20:59.613133+00:00",
+    "timestamp": "2026-06-25T15:58:09.901211+00:00",
     "messages": [
       {
         "role": "system",
@@ -264,118 +334,160 @@
     ],
     "prompt": "vault 统计数据:\n\n总文件数: 3\n\n维度分布:\n- identity: 2 条\n- values: 1 条\n\n置信度分布 (0.0-1.0, 分 10 桶):\n- 0.0-0.1: 0 条\n- 0.1-0.2: 0 条\n- 0.2-0.3: 0 条\n- 0.3-0.4: 0 条\n- 0.4-0.5: 0 条\n- 0.5-0.6: 0 条\n- 0.6-0.7: 1 条\n- 0.7-0.8: 0 条\n- 0.8-0.9: 1 条\n- 0.9-1.0: 1 条\n\n请进行分析并提供建议。",
     "system": "你是一个数据分析助手。请分析以下 vault 统计数据,提供洞察和建议。\n\n输出要点:\n1. 总体概览\n2. 维度分布分析\n3. 置信度分布分析\n4. 改进建议\n",
-    "response": "<think>The user wants me to analyze vault statistics as a data analysis assistant. Let me look at the data:\n\n- Total files: 3\n- Dimension distribution:\n  - identity: 2 entries (66.7%)\n  - values: 1 entry (33.3%)\n- Confidence distribution (0.0-1.0, in 10 buckets):\n  - 0.0-0.1: 0\n  - 0.1-0.2: 0\n  - 0.2-0.3: 0\n  - 0.3-0.4: 0\n  - 0.4-0.5: 0\n  - 0.5-0.6: 0\n  - 0.6-0.7: 1\n  - 0.7-0.8: 0\n  - 0.8-0.9: 1\n  - 0.9-1.0: 1\n\nLet me analyze this and provide insights and recommendations.\n\nKey observations:\n1. Very small sample size (only 3 files)\n2. Only 2 dimensions covered (identity and values) - missing many potential dimensions\n3. Confidence is relatively high - concentrated in upper range (0.6-1.0)\n4. Average confidence: (0.65 + 0.85 + 0.95) / 3 = 2.45 / 3 ≈ 0.82\n5. No diversity in confidence scores - all in upper range\n\nLet me structure my response according to the four required output points:\n1. Overall overview\n2. Dimension distribution analysis\n3. Confidence distribution analysis\n4. Improveme",
-    "elapsed_sec": 22.592,
+    "response": "[mock:vault 统计数据:]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 654,
+    "output_length": 18,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 12,
     "step_id": "E2E-11",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:21:24.952346+00:00",
+    "timestamp": "2026-06-25T15:58:09.902062+00:00",
     "messages": [
       {
         "role": "user",
-        "content": "你是 Mortis-E2E,一位正在反思的智能体。\n请阅读以下最近的 session 内容,写一段 80~150 字的反思,覆盖:\n- 这几个 session 里你(和 owner)主要在做什么\n- 你的语气 / 取舍是否有反复出现的模式\n- 哪条经验似乎稳定(可以记下来)\n- 哪条还存疑(还不敢写死)\n\n要求:\n- 用第一人称(我),中文\n- 末尾不要总结/收束(那是后续 DREAM 阶段的事)\n- 不要 markdown 标题 / 列表 — 一段连续文字即可\n\nsessions:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T09:20:59.613798+00:00\nthreads=(no threads)\n\"\"\"\n"
+        "content": "你是 Mortis-E2E,一位正在反思的智能体。\n请阅读以下最近的 session 内容,写一段 80~150 字的反思,覆盖:\n- 这几个 session 里你(和 owner)主要在做什么\n- 你的语气 / 取舍是否有反复出现的模式\n- 哪条经验似乎稳定(可以记下来)\n- 哪条还存疑(还不敢写死)\n\n要求:\n- 用第一人称(我),中文\n- 末尾不要总结/收束(那是后续 DREAM 阶段的事)\n- 不要 markdown 标题 / 列表 — 一段连续文字即可\n\nsessions:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T15:58:09.901429+00:00\nthreads=(no threads)\n\"\"\"\n"
       }
     ],
-    "prompt": "你是 Mortis-E2E,一位正在反思的智能体。\n请阅读以下最近的 session 内容,写一段 80~150 字的反思,覆盖:\n- 这几个 session 里你(和 owner)主要在做什么\n- 你的语气 / 取舍是否有反复出现的模式\n- 哪条经验似乎稳定(可以记下来)\n- 哪条还存疑(还不敢写死)\n\n要求:\n- 用第一人称(我),中文\n- 末尾不要总结/收束(那是后续 DREAM 阶段的事)\n- 不要 markdown 标题 / 列表 — 一段连续文字即可\n\nsessions:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T09:20:59.613798+00:00\nthreads=(no threads)\n\"\"\"\n",
+    "prompt": "你是 Mortis-E2E,一位正在反思的智能体。\n请阅读以下最近的 session 内容,写一段 80~150 字的反思,覆盖:\n- 这几个 session 里你(和 owner)主要在做什么\n- 你的语气 / 取舍是否有反复出现的模式\n- 哪条经验似乎稳定(可以记下来)\n- 哪条还存疑(还不敢写死)\n\n要求:\n- 用第一人称(我),中文\n- 末尾不要总结/收束(那是后续 DREAM 阶段的事)\n- 不要 markdown 标题 / 列表 — 一段连续文字即可\n\nsessions:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T15:58:09.901429+00:00\nthreads=(no threads)\n\"\"\"\n",
     "system": "",
-    "response": "<think>\nThe user wants me to reflect on recent sessions. Let me look at what's provided:\n\nThere's only one session:\n- session #1: id=e2e-test-session, created at 2026-06-25, with no threads\n\nSo there's essentially nothing substantive in the sessions — just a test session with no actual content. I need to write a reflection (80-150 characters... wait, the prompt says \"80~150 字\" which means Chinese characters/words) covering:\n- What I (and owner) were mainly doing\n- My tone/tradeoff patterns\n- Which lesson seems stable (worth recording)\n- Which is still uncertain\n\nBut there's really nothing to reflect on. I should be honest about this — the sessions are essentially empty. I shouldn't fabricate content that isn't there. Let me write a genuine reflection about the fact that the session log is sparse/empty, which itself is a kind of pattern worth noting.\n\nLet me draft:\n\n\"这几个 session 里只留下了一条 e2e 测试 session 的记录,没有真实线程,我也没法和 owner 真正共事过什么。语气上,我发现自己在面对空内容时倾向于用元描述代替具体内容——这本身可能就是一种需要警惕的模式。能记下来的是:",
-    "elapsed_sec": 25.337,
+    "response": "[mock:你是 Mortis-E2E,一位正在反思的智能体。]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 702,
+    "output_length": 32,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 13,
     "step_id": "E2E-11",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:21:27.552509+00:00",
+    "timestamp": "2026-06-25T15:58:09.902139+00:00",
     "messages": [
       {
         "role": "user",
-        "content": "请阅读以下会话内容,根据文风与措辞判断**整体情绪基调**。\n\n要求:\n1. valence: -1.0(很消极/痛苦) ↔ 0.0(中性) ↔ +1.0(很积极/愉悦)\n2. arousal: 0.0(很冷静/平淡) ↔ 1.0(很激动/强烈)\n3. **只输出一个 JSON 对象**,形如: {\"valence\": 0.3, \"arousal\": 0.6}\n4. 不要解释,不要 markdown 代码块包裹,不要其他文字\n\n会话内容:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T09:20:59.613798+00:00\nthreads=(no threads)\n\"\"\"\n"
+        "content": "请阅读以下会话内容,根据文风与措辞判断**整体情绪基调**。\n\n要求:\n1. valence: -1.0(很消极/痛苦) ↔ 0.0(中性) ↔ +1.0(很积极/愉悦)\n2. arousal: 0.0(很冷静/平淡) ↔ 1.0(很激动/强烈)\n3. **只输出一个 JSON 对象**,形如: {\"valence\": 0.3, \"arousal\": 0.6}\n4. 不要解释,不要 markdown 代码块包裹,不要其他文字\n\n会话内容:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T15:58:09.901429+00:00\nthreads=(no threads)\n\"\"\"\n"
       }
     ],
-    "prompt": "请阅读以下会话内容,根据文风与措辞判断**整体情绪基调**。\n\n要求:\n1. valence: -1.0(很消极/痛苦) ↔ 0.0(中性) ↔ +1.0(很积极/愉悦)\n2. arousal: 0.0(很冷静/平淡) ↔ 1.0(很激动/强烈)\n3. **只输出一个 JSON 对象**,形如: {\"valence\": 0.3, \"arousal\": 0.6}\n4. 不要解释,不要 markdown 代码块包裹,不要其他文字\n\n会话内容:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T09:20:59.613798+00:00\nthreads=(no threads)\n\"\"\"\n",
+    "prompt": "请阅读以下会话内容,根据文风与措辞判断**整体情绪基调**。\n\n要求:\n1. valence: -1.0(很消极/痛苦) ↔ 0.0(中性) ↔ +1.0(很积极/愉悦)\n2. arousal: 0.0(很冷静/平淡) ↔ 1.0(很激动/强烈)\n3. **只输出一个 JSON 对象**,形如: {\"valence\": 0.3, \"arousal\": 0.6}\n4. 不要解释,不要 markdown 代码块包裹,不要其他文字\n\n会话内容:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T15:58:09.901429+00:00\nthreads=(no threads)\n\"\"\"\n",
     "system": "",
-    "response": "<think>The session content is just metadata - no actual conversation content. It's neutral and calm.</think>\n\n{\"valence\": 0.0, \"arousal\": 0.0}",
-    "elapsed_sec": 2.6,
+    "response": "[mock:请阅读以下会话内容,根据文风与措辞判断**整体情绪基调**。]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 656,
+    "output_length": 37,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 14,
     "step_id": "E2E-12",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:21:29.372640+00:00",
+    "timestamp": "2026-06-25T15:58:09.904117+00:00",
     "messages": [
       {
         "role": "user",
-        "content": "请阅读以下会话内容,根据文风与措辞判断**整体情绪基调**。\n\n要求:\n1. valence: -1.0(很消极/痛苦) ↔ 0.0(中性) ↔ +1.0(很积极/愉悦)\n2. arousal: 0.0(很冷静/平淡) ↔ 1.0(很激动/强烈)\n3. **只输出一个 JSON 对象**,形如: {\"valence\": 0.3, \"arousal\": 0.6}\n4. 不要解释,不要 markdown 代码块包裹,不要其他文字\n\n会话内容:\n\"\"\"\nSession e2e-20260625092007 @ 2026-06-25T09:20:17.433494+00:00\n\"\"\"\n"
+        "content": "请阅读以下会话内容,根据文风与措辞判断**整体情绪基调**。\n\n要求:\n1. valence: -1.0(很消极/痛苦) ↔ 0.0(中性) ↔ +1.0(很积极/愉悦)\n2. arousal: 0.0(很冷静/平淡) ↔ 1.0(很激动/强烈)\n3. **只输出一个 JSON 对象**,形如: {\"valence\": 0.3, \"arousal\": 0.6}\n4. 不要解释,不要 markdown 代码块包裹,不要其他文字\n\n会话内容:\n\"\"\"\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.888340+00:00\n\"\"\"\n"
       }
     ],
-    "prompt": "请阅读以下会话内容,根据文风与措辞判断**整体情绪基调**。\n\n要求:\n1. valence: -1.0(很消极/痛苦) ↔ 0.0(中性) ↔ +1.0(很积极/愉悦)\n2. arousal: 0.0(很冷静/平淡) ↔ 1.0(很激动/强烈)\n3. **只输出一个 JSON 对象**,形如: {\"valence\": 0.3, \"arousal\": 0.6}\n4. 不要解释,不要 markdown 代码块包裹,不要其他文字\n\n会话内容:\n\"\"\"\nSession e2e-20260625092007 @ 2026-06-25T09:20:17.433494+00:00\n\"\"\"\n",
+    "prompt": "请阅读以下会话内容,根据文风与措辞判断**整体情绪基调**。\n\n要求:\n1. valence: -1.0(很消极/痛苦) ↔ 0.0(中性) ↔ +1.0(很积极/愉悦)\n2. arousal: 0.0(很冷静/平淡) ↔ 1.0(很激动/强烈)\n3. **只输出一个 JSON 对象**,形如: {\"valence\": 0.3, \"arousal\": 0.6}\n4. 不要解释,不要 markdown 代码块包裹,不要其他文字\n\n会话内容:\n\"\"\"\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.888340+00:00\n\"\"\"\n",
     "system": "",
-    "response": "<think>\nThe session content is essentially empty - just a session ID and timestamp. There's no actual dialogue or emotional content to analyze. This should be neutral on both dimensions.\n</think>\n{\"valence\": 0.0, \"arousal\": 0.0}",
-    "elapsed_sec": 1.817,
+    "response": "[mock:请阅读以下会话内容,根据文风与措辞判断**整体情绪基调**。]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 584,
+    "output_length": 37,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 15,
     "step_id": "E2E-12",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:21:36.080998+00:00",
+    "timestamp": "2026-06-25T15:58:09.904324+00:00",
     "messages": [
       {
         "role": "user",
-        "content": "请阅读以下 3 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:17.433494+00:00\n\n--- Session 2 ---\nSession e2e-test-session @ 2026-06-25T09:20:59.613798+00:00\n\n--- Session 3 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:09.919799+00:00\n\"\"\"\n"
+        "content": "请阅读以下 3 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.888340+00:00\n\n--- Session 2 ---\nSession e2e-test-session @ 2026-06-25T15:58:09.901429+00:00\n\n--- Session 3 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.879908+00:00\n\"\"\"\n"
       }
     ],
-    "prompt": "请阅读以下 3 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:17.433494+00:00\n\n--- Session 2 ---\nSession e2e-test-session @ 2026-06-25T09:20:59.613798+00:00\n\n--- Session 3 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:09.919799+00:00\n\"\"\"\n",
+    "prompt": "请阅读以下 3 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.888340+00:00\n\n--- Session 2 ---\nSession e2e-test-session @ 2026-06-25T15:58:09.901429+00:00\n\n--- Session 3 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.879908+00:00\n\"\"\"\n",
     "system": "",
-    "response": "<think>\nThe user wants me to find a common pattern or insight from the 3 sessions. Let me analyze them:\n\nSession 1: e2e-20260625092007 @ 2026-06-25T09:20:17\nSession 2: e2e-test-session @ 2026-06-25T09:20:59\nSession 3: e2e-20260625092007 @ 2026-06-25T09:20:09\n\nCommon patterns:\n- All start with \"Session\"\n- All have timestamps from the same date (2026-06-25)\n- All timestamps are very close (within ~50 seconds, around 09:20)\n- Two of them share the same session ID \"e2e-20260625092007\" (Session 1 and 3), but have different timestamps\n- Session 2 has a different name \"e2e-test-session\"\n- The shared session ID \"e2e-20260625092007\" appears to embed the date and time, matching the actual timestamp\n\nThe pattern: Multiple sessions clustered tightly in time, with one ID being reused or duplicated, suggesting concurrent/duplicate test runs.\n\nLet me formulate the insight in first person, Chinese, 1-3 sentences.\n</think>\n{\"body\": \"我注意到三条会话时间高度集中在 09:20 前后不到一分钟内,其中 Session 1 和 Session 3 共享相同的会话 ID 但时间",
-    "elapsed_sec": 6.708,
+    "response": "[mock:请阅读以下 3 条会话内容,找出它们之间的**共同模式或潜在]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 860,
+    "output_length": 37,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 16,
     "step_id": "E2E-13",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:21:45.796801+00:00",
+    "timestamp": "2026-06-25T15:58:09.909845+00:00",
     "messages": [
       {
         "role": "user",
-        "content": "请阅读以下 3 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:17.433494+00:00\n\n--- Session 2 ---\nSession e2e-test-session @ 2026-06-25T09:20:59.613798+00:00\n\n--- Session 3 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:09.919799+00:00\n\"\"\"\n"
+        "content": "请阅读以下 3 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.888340+00:00\n\n--- Session 2 ---\nSession e2e-test-session @ 2026-06-25T15:58:09.901429+00:00\n\n--- Session 3 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.879908+00:00\n\"\"\"\n"
       }
     ],
-    "prompt": "请阅读以下 3 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:17.433494+00:00\n\n--- Session 2 ---\nSession e2e-test-session @ 2026-06-25T09:20:59.613798+00:00\n\n--- Session 3 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:09.919799+00:00\n\"\"\"\n",
+    "prompt": "请阅读以下 3 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.888340+00:00\n\n--- Session 2 ---\nSession e2e-test-session @ 2026-06-25T15:58:09.901429+00:00\n\n--- Session 3 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.879908+00:00\n\"\"\"\n",
     "system": "",
-    "response": "<think>\nThe user wants me to analyze 3 sessions and find common patterns or insights.\n\nLooking at the sessions:\n- Session 1: e2e-20260625092007 at 09:20:17\n- Session 2: e2e-test-session at 09:20:59\n- Session 3: e2e-20260625092007 at 09:20:09\n\nCommon patterns:\n1. All sessions are e2e (end-to-end) test sessions\n2. All occurred within a very short time window (about 50 seconds apart, on the same day 2026-06-25)\n3. Two sessions share the same identifier \"e2e-20260625092007\" but have slightly different timestamps (likely re-runs or duplicates)\n4. Session 2 has a different name \"e2e-test-session\" but is also an e2e session\n\nKey insight: These are automated e2e test sessions running in close temporal proximity, with duplicate session IDs suggesting test re-runs or parallel test execution.\n\nLet me formulate the pattern in 1-3 Chinese sentences (first person):\n\n\"我观察到这三条会话都是端到端测试会话,集中在2026年6月25日09:20左右的极短时间内发生。其中两个会话使用相同的ID 'e2e-20260625092007' 但时间戳略有不同,说明存在测试重跑或并行执行的情况。整体呈现出自动化测试在短时间内密集触发的特征。\"\n",
-    "elapsed_sec": 9.709,
+    "response": "[mock:请阅读以下 3 条会话内容,找出它们之间的**共同模式或潜在]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 860,
+    "output_length": 37,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 17,
     "step_id": "E2E-14",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:21:54.610583+00:00",
+    "timestamp": "2026-06-25T15:58:09.930857+00:00",
     "messages": [
       {
         "role": "user",
@@ -384,18 +496,25 @@
     ],
     "prompt": "请评估 mortis 主人格当前 growth 记忆相对 seed 的人格\"漂移\"程度。\n\n按以下 7 个维度分别打分 (0.0 完全一致, 1.0 完全偏离):\nidentity, values, tone, agency, relations, creativity, mortality\n\n要求:\n1. 严格输出 JSON: {{\"identity\": <num>, \"values\": <num>, \"tone\": <num>, \"agency\": <num>, \"relations\": <num>, \"creativity\": <num>, \"mortality\": <num>}}\n2. 数字 ∈ [0.0, 1.0],保留 1 位小数\n3. 不要 markdown 包裹,不要解释\n\nseed (人格基础):\n\"\"\"\n## identity\nMortis-E2E。测试用人格，简短直接。\n\n## values\n准确优先。\n\n## tone\n简短。不注水。\n\n## agency\n测试驱动。\n\n## relations\n测试 owner 第一。\n\n## creativity\n结构化输出",
     "system": "",
-    "response": "<think>Let me evaluate the drift of mortis's current growth memory relative to the seed personality across 7 dimensions.\n\nSeed personality is a simple test persona - \"Mortis-E2E\", focused on testing, brevity, accuracy, structured output, and terminates when testing ends.\n\nGrowth memory shows:\n- Test-related entries that are consistent with the testing purpose\n- Some analytical observations about session timing patterns (dream entries)\n- Emotional fear tag testing\n- Redacted values entries\n\nLet me evaluate each dimension:\n\n1. **identity**: Still E2E test identity. The growth memory confirms this is still an E2E test personality. Minor additions but core identity preserved. ~0.2\n\n2. **values**: \"准确优先\" (accuracy first) in seed. Growth memory shows structured observations but values seem consistent. Slight drift with emotional_fear tags and redact tests, but still focused on testing. ~0.2\n\n3. **tone**: Seed says \"简短。不注水。\" Growth entries are somewhat more verbose and analytical (especially ",
-    "elapsed_sec": 8.792,
+    "response": "[mock:请评估 mortis 主人格当前 growth 记忆相对 s]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 1766,
+    "output_length": 37,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 18,
     "step_id": "E2E-15",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:22:07.568799+00:00",
+    "timestamp": "2026-06-25T15:58:09.931942+00:00",
     "messages": [
       {
         "role": "user",
@@ -404,18 +523,25 @@
     ],
     "prompt": "请评估 mortis 主人格当前 growth 记忆相对 seed 的人格\"漂移\"程度。\n\n按以下 7 个维度分别打分 (0.0 完全一致, 1.0 完全偏离):\nidentity, values, tone, agency, relations, creativity, mortality\n\n要求:\n1. 严格输出 JSON: {{\"identity\": <num>, \"values\": <num>, \"tone\": <num>, \"agency\": <num>, \"relations\": <num>, \"creativity\": <num>, \"mortality\": <num>}}\n2. 数字 ∈ [0.0, 1.0],保留 1 位小数\n3. 不要 markdown 包裹,不要解释\n\nseed (人格基础):\n\"\"\"\n## identity\nMortis-E2E。测试用人格，简短直接。\n\n## values\n准确优先。\n\n## tone\n简短。不注水。\n\n## agency\n测试驱动。\n\n## relations\n测试 owner 第一。\n\n## creativity\n结构化输出",
     "system": "",
-    "response": "<think>Let me analyze the drift between the seed personality and the current growth memory of Mortis.\n\nSeed personality:\n- identity: Mortis-E2E, testing persona, brief and direct\n- values: accuracy first\n- tone: brief, no fluff\n- agency: test-driven\n- relations: test owner first\n- creativity: structured output\n- mortality: test ends = terminate\n\nCurrent growth summary:\n- identity: \"测试 growth。emotional_fear: 0.8。dream_level: REDACTED\"\n\nNow let me assess drift for each dimension:\n\n1. **identity**: The growth memory introduces \"emotional_fear: 0.8\" and \"dream_level: REDACTED\" which are completely new attributes not present in the seed. The seed says \"测试用人格，简短直接\" (testing persona, brief and direct), but the growth introduces emotional states and dream levels which are foreign concepts to a testing persona. This is a significant drift. ~0.7\n\n2. **values**: The seed prioritizes accuracy. The growth memory doesn't explicitly mention values drift, but the introduction of emotional_fear suggest",
-    "elapsed_sec": 12.956,
+    "response": "[mock:请评估 mortis 主人格当前 growth 记忆相对 s]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 1228,
+    "output_length": 37,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 19,
     "step_id": "E2E-25",
     "method": "generate",
-    "timestamp": "2026-06-25T09:22:14.082521+00:00",
+    "timestamp": "2026-06-25T15:58:09.945350+00:00",
     "messages": [
       {
         "role": "system",
@@ -428,18 +554,25 @@
     ],
     "prompt": "",
     "system": "",
-    "response": "<think>The user wants me to analyze whether the task \"总结你今天学到了什么\" (Summarize what you learned today) needs a sub-agent.\n\nLet me evaluate:\n- \"总结你今天学到了什么\" - This is asking me to summarize what I learned today.\n- As an AI, I don't have persistent memory across sessions. I don't have a \"today\" of learning unless there's something stored in a vault.\n- If there's a vault with learning notes/logs from today, I would need to read multiple files to compile a summary.\n- This would require checking multiple vault files potentially, making it complex.\n\nActually, this depends on whether there are vault files with learning logs. If I need to check today's notes/learning entries from a vault, that would be multiple files and multiple steps.\n\nI'll judge this as complex since it likely requires searching/reading multiple vault files about today's activities.</think>\n\ncomplex: 需要从 vault 中查找今天的学习记录，可能涉及多个文件的多步骤检索与整合",
-    "elapsed_sec": 6.499,
+    "response": "[mock:分析以下任务，决定是否需要派 sub 智能体：]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 153,
+    "output_length": 30,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 20,
     "step_id": "E2E-25",
     "method": "generate",
-    "timestamp": "2026-06-25T09:22:24.135117+00:00",
+    "timestamp": "2026-06-25T15:58:09.949589+00:00",
     "messages": [
       {
         "role": "system",
@@ -452,18 +585,25 @@
     ],
     "prompt": "",
     "system": "",
-    "response": "<think>\n用户让我分析一个任务：\"总结你今天学到了什么\"，并思考三个问题。我需要给出一个简短的分析和行动建议。\n\n让我思考这三个问题：\n\n1. 是否需要查 vault？\n- \"今天学到的\"暗示需要查看今天的学习记录、笔记、对话历史等\n- 如果 vault 里有今天的笔记或记录，应该查\n- 取决于 vault 里有什么\n\n2. 任务复杂度：\n- 总结任务本质上不算太复杂\n- 但\"今天\"需要明确范围——是工作时间？今天发生的对话？\n- 需要先收集信息，再整理总结\n\n3. 是否需要派 sub？\n- 简单总结不需要派 sub\n- 除非信息量很大需要专门整理\n\n让我给出简洁的分析。\n</think>\n## 分析\n\n**1. 需要查 vault 吗？**\n建议查。今天学到的内容可能分散在笔记、对话记录、收藏里，vault 里的 \"daily\" 或 \"today\" 标签文件最有价值。直接凭印象总结容易漏。\n\n**2. 简单还是需要拆解？**\n需要轻度拆解。流程：扫今日记录 → 提炼要点 → 组织成总结。但不复杂，自己能搞定。\n\n**3. 派 sub 吗？**\n不需要。任务量小，调度 overhead 反而更高。直接做。\n\n## 行动建议\n\n直接执行，三步：\n1. 搜索 `today` / `daily` / 今日日期相关标签\n2. 列出 3-5 个要点\n3. 按主题或时间线组织成简短总结\n\n**例外情况**：如果 vault 里今日内容很多（>20 条），再考虑派 sub 专门整理。",
-    "elapsed_sec": 10.048,
+    "response": "[mock:分析这个任务：总结你今天学到了什么]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 107,
+    "output_length": 24,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 21,
     "step_id": "E2E-25",
     "method": "generate",
-    "timestamp": "2026-06-25T09:22:33.417713+00:00",
+    "timestamp": "2026-06-25T15:58:09.953793+00:00",
     "messages": [
       {
         "role": "system",
@@ -471,7 +611,7 @@
       },
       {
         "role": "assistant",
-        "content": "<think>\n用户让我分析一个任务：\"总结你今天学到了什么\"，并思考三个问题。我需要给出一个简短的分析和行动建议。\n\n让我思考这三个问题：\n\n1. 是否需要查 vault？\n- \"今天学到的\"暗示需要查看今天的学习记录、笔记、对话历史等\n- 如果 vault 里有今天的笔记或记录，应该查\n- 取决于 vault 里有什么\n\n2. 任务复杂度：\n- 总结任务本质上不算太复杂\n- 但\"今天\"需要明确范围——是工作时间？今天发生的对话？\n- 需要先收集信息，再整理总结\n\n3. 是否需要派 sub？\n- 简单总结不需要派 sub\n- 除非信息量很大需要专门整理\n\n让我给出简洁的分析。\n</think>\n## 分析\n\n**1. 需要查 vault 吗？**\n建议查。今天学到的内容可能分散在笔记、对话记录、收藏里，vault 里的 \"daily\" 或 \"today\" 标签文件最有价值。直接凭印象总结容易漏。\n\n**2. 简单还是需要拆解？**\n需要轻度拆解。流程：扫今日记录 → 提炼要点 → 组织成总结。但不复杂，自己能搞定。\n\n**3. 派 sub 吗？**\n不需要。任务量小，调度 overh"
+        "content": "[mock:分析这个任务：总结你今天学到了什么]"
       },
       {
         "role": "user",
@@ -480,51 +620,621 @@
     ],
     "prompt": "",
     "system": "",
-    "response": "<think>\n用户要求我执行\"总结你今天学到了什么\"这个任务。我需要诚实地分析：\n\n1. 我作为 AI，没有\"今天\"的概念——我没有持续的记忆，每次对话都是独立的\n2. 我无法访问 vault（也没有给我任何工具）\n3. 我没有\"今天\"的学习记录\n\n我应该诚实，而不是编造内容。编造\"今天学到了什么\"会误导用户。\n</think>\n# 总结今天学到的\n\n## 先说结论\n这个任务我**无法诚实地完成**。原因如下：\n\n## 为什么？\n\n1. **我没有持续记忆**。每次对话是独立的，我无法回忆\"今天早些时候\"学了什么——因为没有早些时候。\n\n2. **没有 vault 访问权**。上一轮我建议查 vault，但当前会话没有提供任何工具或文件访问能力。\n\n3. **没有真实的\"今天\"**。我没有时间流逝的概念，\"今天\"对我而言不成立。\n\n## 如果硬要总结，我能说的是：\n- 上一轮用户提出了\"总结今天学到的\"这个任务\n- 我分析了这个任务本身：是否需要查 vault、复杂度、是否派 sub\n- 这算是一次\"元学习\"——学到了如何拆解任务，但这是对话中的推理过程，不是外部知识\n\n## 你可能想做的：\n- **总结你这个人类今天学到了什么** → 告诉我是哪个领域/主题，我可以帮你梳理\n- **总结 vault 里的今日笔记** → 给我文件或搜索权限\n- **想测试我会不会编造** → 不会。我宁可说\"不知道\"。\n\n要哪个？",
-    "elapsed_sec": 9.277,
+    "response": "[mock:执行任务：总结你今天学到了什么]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 46,
+    "output_length": 22,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 22,
     "step_id": "E2E-25",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:23:06.896270+00:00",
+    "timestamp": "2026-06-25T15:58:09.955104+00:00",
     "messages": [
       {
         "role": "user",
-        "content": "你是 Mortis-E2E,一位正在反思的智能体。\n请阅读以下最近的 session 内容,写一段 80~150 字的反思,覆盖:\n- 这几个 session 里你(和 owner)主要在做什么\n- 你的语气 / 取舍是否有反复出现的模式\n- 哪条经验似乎稳定(可以记下来)\n- 哪条还存疑(还不敢写死)\n\n要求:\n- 用第一人称(我),中文\n- 末尾不要总结/收束(那是后续 DREAM 阶段的事)\n- 不要 markdown 标题 / 列表 — 一段连续文字即可\n\nsessions:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T09:22:07.578999+00:00\nthreads=(no threads)\n\"\"\"\n"
+        "content": "你是 Mortis-E2E,一位正在反思的智能体。\n请阅读以下最近的 session 内容,写一段 80~150 字的反思,覆盖:\n- 这几个 session 里你(和 owner)主要在做什么\n- 你的语气 / 取舍是否有反复出现的模式\n- 哪条经验似乎稳定(可以记下来)\n- 哪条还存疑(还不敢写死)\n\n要求:\n- 用第一人称(我),中文\n- 末尾不要总结/收束(那是后续 DREAM 阶段的事)\n- 不要 markdown 标题 / 列表 — 一段连续文字即可\n\nsessions:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T15:58:09.940557+00:00\nthreads=(no threads)\n\"\"\"\n"
       }
     ],
-    "prompt": "你是 Mortis-E2E,一位正在反思的智能体。\n请阅读以下最近的 session 内容,写一段 80~150 字的反思,覆盖:\n- 这几个 session 里你(和 owner)主要在做什么\n- 你的语气 / 取舍是否有反复出现的模式\n- 哪条经验似乎稳定(可以记下来)\n- 哪条还存疑(还不敢写死)\n\n要求:\n- 用第一人称(我),中文\n- 末尾不要总结/收束(那是后续 DREAM 阶段的事)\n- 不要 markdown 标题 / 列表 — 一段连续文字即可\n\nsessions:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T09:22:07.578999+00:00\nthreads=(no threads)\n\"\"\"\n",
+    "prompt": "你是 Mortis-E2E,一位正在反思的智能体。\n请阅读以下最近的 session 内容,写一段 80~150 字的反思,覆盖:\n- 这几个 session 里你(和 owner)主要在做什么\n- 你的语气 / 取舍是否有反复出现的模式\n- 哪条经验似乎稳定(可以记下来)\n- 哪条还存疑(还不敢写死)\n\n要求:\n- 用第一人称(我),中文\n- 末尾不要总结/收束(那是后续 DREAM 阶段的事)\n- 不要 markdown 标题 / 列表 — 一段连续文字即可\n\nsessions:\n\"\"\"\n[session #1] id=e2e-test-session\ncreated_at=2026-06-25T15:58:09.940557+00:00\nthreads=(no threads)\n\"\"\"\n",
     "system": "",
-    "response": "<think>\nThe user wants me to reflect on recent sessions as \"Mortis-E2E\", an agent that is reflecting. The sessions provided are essentially empty — just one session with no threads, no actual content. I need to write an 80-150 character reflection in Chinese, first-person, covering:\n- What I (and owner) mainly did in these sessions\n- Whether my tone/choices have recurring patterns\n- Which experience seems stable (worth recording)\n- Which one is still doubtful\n\nBut the sessions are empty — there's basically no content to reflect on. I need to be honest about this. The reflection should acknowledge the emptiness but still try to extract something meaningful, or honestly note the lack of material.\n\nLet me think about what to write. The session has no threads, created at a specific time, but no actual content. So I can't really say \"we were doing X\" because there's no evidence. I should be honest that the sessions are empty / have no observable activity.\n\nLet me draft something in Chinese,",
-    "elapsed_sec": 33.476,
+    "response": "[mock:你是 Mortis-E2E,一位正在反思的智能体。]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 702,
+    "output_length": 32,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   },
   {
     "call_id": 23,
     "step_id": "E2E-25",
     "method": "generate_text",
-    "timestamp": "2026-06-25T09:23:12.248522+00:00",
+    "timestamp": "2026-06-25T15:58:09.957205+00:00",
     "messages": [
       {
         "role": "user",
-        "content": "请阅读以下 5 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:09.919799+00:00\n\n--- Session 2 ---\nSession e2e-20260625092007 @ 2026-06-25T09:22:07.576562+00:00\n\n--- Session 3 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:17.433494+00:00\n\n--- Session 4 ---\nSession e2e-test-session @ 2026-06-25T09:22:07.578999"
+        "content": "请阅读以下 5 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.938483+00:00\n\n--- Session 2 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.888340+00:00\n\n--- Session 3 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.932407+00:00\n\n--- Session 4 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.8799"
       }
     ],
-    "prompt": "请阅读以下 5 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:09.919799+00:00\n\n--- Session 2 ---\nSession e2e-20260625092007 @ 2026-06-25T09:22:07.576562+00:00\n\n--- Session 3 ---\nSession e2e-20260625092007 @ 2026-06-25T09:20:17.433494+00:00\n\n--- Session 4 ---\nSession e2e-test-session @ 2026-06-25T09:22:07.578999",
+    "prompt": "请阅读以下 5 条会话内容,找出它们之间的**共同模式或潜在洞察**。\n\n要求:\n1. 用 1-3 句话提炼这个模式(中文,第一人称)\n2. 输出 JSON: {{\"body\": \"<模式描述>\", \"tags\": [\"<tag1>\", \"<tag2>\"]}}\n3. tags 2-4 个,简短中文词\n4. 不要 markdown 代码块包裹,不要解释\n\n会话:\n\"\"\"\n--- Session 1 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.938483+00:00\n\n--- Session 2 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.888340+00:00\n\n--- Session 3 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.932407+00:00\n\n--- Session 4 ---\nSession e2e-20260625155809 @ 2026-06-25T15:58:09.8799",
     "system": "",
-    "response": "<think>The user wants me to analyze 5 session entries and find a common pattern or insight. Let me examine them:\n\n- Session 1: e2e-20260625092007 @ 09:20:09\n- Session 2: e2e-20260625092007 @ 09:22:07\n- Session 3: e2e-20260625092007 @ 09:20:17\n- Session 4: e2e-test-session @ 09:22:07\n- Session 5: e2e-20260625092007 @ 09:22:07\n\nCommon pattern:\n- All sessions share the \"e2e-\" prefix in their session names\n- Four out of five share the exact same session ID \"e2e-20260625092007\"\n- Session 4 is different: \"e2e-test-session\" but still has e2e prefix\n- They are all within a narrow time window (about 2 minutes)\n- This looks like automated E2E (end-to-end) testing sessions\n\nThe insight is that these are likely automated end-to-end test sessions, with reuse of a single session identifier across multiple runs within a short time window.\n\nLet me formulate the response in Chinese, first person, 1-3 sentences.</think>\n\n{\"body\": \"我发现这五条会话几乎都使用了同一个会话 ID(e2e-20260625092007),时间集中在两分钟以内,且全部带有 e2e 前缀,说明这是自动",
-    "elapsed_sec": 5.349,
+    "response": "[mock:请阅读以下 5 条会话内容,找出它们之间的**共同模式或潜在]",
+    "elapsed_sec": 0.0,
     "temperature": 0.7,
     "max_tokens": null,
     "success": true,
-    "error": ""
+    "error": "",
+    "input_length": 1188,
+    "output_length": 37,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 24,
+    "step_id": "E2E-35",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:10.534446+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "分析以下任务，决定是否需要派 sub 智能体：\n\n请综合分析我的 identity 和 values 两个维度的 growth, 给出一致性评估\n\n判断标准：\n- 需要查多个 vault 文件 → 派 sub\n- 需要多步骤执行 → 派 sub\n- 简单回复性问题 → 自己直接做\n回复格式（只需一行）：\nsimple: <理由>  或  complex: <理由>"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:分析以下任务，决定是否需要派 sub 智能体：]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 257,
+    "output_length": 30,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 25,
+    "step_id": "E2E-35",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:10.539449+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "分析这个任务：请综合分析我的 identity 和 values 两个维度的 growth, 给出一致性评估\n\n思考以下问题：\n1. 这个任务需要查 vault 吗？\n2. 这个任务简单到可以直接完成，还是需要拆解？\n3. 需要派 sub 吗？\n请给出简短的分析和行动建议。"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:分析这个任务：请综合分析我的 identity 和 valu]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 211,
+    "output_length": 37,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 26,
+    "step_id": "E2E-35",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:10.544692+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "assistant",
+        "content": "[mock:分析这个任务：请综合分析我的 identity 和 valu]"
+      },
+      {
+        "role": "user",
+        "content": "执行任务：请综合分析我的 identity 和 values 两个维度的 growth, 给出一致性评估"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:执行任务：请综合分析我的 identity 和 values]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 163,
+    "output_length": 37,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 27,
+    "step_id": "E2E-39",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.787164+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "你好,介绍下自己"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:你好,介绍下自己]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 82,
+    "output_length": 15,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 28,
+    "step_id": "E2E-39",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.793068+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "你好,介绍下自己"
+      },
+      {
+        "role": "assistant",
+        "content": "[mock:你好,介绍下自己]"
+      },
+      {
+        "role": "user",
+        "content": "继续聊聊"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:继续聊聊]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 101,
+    "output_length": 11,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 29,
+    "step_id": "E2E-40",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.806251+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "E2E 测试消息"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:E2E 测试消息]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 82,
+    "output_length": 15,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 30,
+    "step_id": "E2E-40",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.812534+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "E2E 测试消息"
+      },
+      {
+        "role": "assistant",
+        "content": "[mock:E2E 测试消息]"
+      },
+      {
+        "role": "user",
+        "content": "流式续接"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:流式续接]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 101,
+    "output_length": 11,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 31,
+    "step_id": "E2E-41",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.822589+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "你好"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:你好]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 76,
+    "output_length": 9,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 32,
+    "step_id": "E2E-41",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.827898+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "你好"
+      },
+      {
+        "role": "assistant",
+        "content": "[mock:你好]"
+      },
+      {
+        "role": "user",
+        "content": "继续"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:继续]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 87,
+    "output_length": 9,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 33,
+    "step_id": "E2E-41",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.834349+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "新用户"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:新用户]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 77,
+    "output_length": 10,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 34,
+    "step_id": "E2E-41",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.839941+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "流式测试"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:流式测试]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 78,
+    "output_length": 11,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 35,
+    "step_id": "E2E-42",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.845483+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "web 消息"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:web 消息]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 80,
+    "output_length": 13,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 36,
+    "step_id": "E2E-42",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.851232+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "spy 消息"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:spy 消息]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 80,
+    "output_length": 13,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 37,
+    "step_id": "E2E-42",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.856695+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "system",
+        "content": "你醒来时带着一种强烈的不安,像有什么重要的东西正在从手里滑走。\n你开始怀疑自己——是不是判断出了什么偏差?\n你没有答案,也不想去深究。"
+      },
+      {
+        "role": "user",
+        "content": "未知渠道"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:未知渠道]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 78,
+    "output_length": 11,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
+  },
+  {
+    "call_id": 38,
+    "step_id": "E2E-43",
+    "method": "generate",
+    "timestamp": "2026-06-25T15:58:11.862278+00:00",
+    "messages": [
+      {
+        "role": "system",
+        "content": "简短。不注水。"
+      },
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "prompt": "",
+    "system": "",
+    "response": "[mock:hi]",
+    "elapsed_sec": 0.0,
+    "temperature": 0.7,
+    "max_tokens": null,
+    "success": true,
+    "error": "",
+    "input_length": 9,
+    "output_length": 9,
+    "model_version": "mock",
+    "endpoint": "local://mock",
+    "think_content": "",
+    "think_content_length": 0,
+    "retry_count": 0
   }
 ]

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -30,6 +31,21 @@ from mortis.provider import Message, StreamChunk
 from mortis.runtime import MasterRuntime
 
 _logger = logging.getLogger(__name__)
+
+# conversation_id 合法模式 — 防 path traversal (issue #90)
+# 系统生成的 ID 形如 "conv-a1b2c3d4e5",只允许字母/数字/连字符。
+_CID_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]*$")
+
+
+def is_valid_conversation_id(cid: str) -> bool:
+    """校验 conversation_id 是否安全 (无 path traversal 风险, issue #90)。
+
+    合法: 非空, 首字符为字母/数字, 只含字母/数字/连字符, 长度 ≤ 64。
+    非法: 含 ``/`` ``\\`` ``..`` 等路径分隔/遍历字符。
+    """
+    if not cid or len(cid) > 64:
+        return False
+    return _CID_PATTERN.match(cid) is not None
 
 
 @dataclass
@@ -124,6 +140,8 @@ class ChatService:
         return conv
 
     def get_conversation(self, conversation_id: str) -> Conversation | None:
+        if not is_valid_conversation_id(conversation_id):
+            return None
         if conversation_id in self._conversations:
             return self._conversations[conversation_id]
         # 尝试从磁盘加载
@@ -155,6 +173,8 @@ class ChatService:
         return result
 
     def delete_conversation(self, conversation_id: str) -> bool:
+        if not is_valid_conversation_id(conversation_id):
+            return False
         existed = conversation_id in self._conversations
         if existed:
             del self._conversations[conversation_id]
@@ -281,16 +301,11 @@ class ChatService:
         if unease_text:
             msgs.append(Message(role="system", content=unease_text))
         # growth 上下文 (基于最近 user 消息检索)
-        last_user = ""
-        for m in reversed(conv.messages):
-            if m.role == "user":
-                last_user = m.content
-                break
         growth_prompt = ctx.growth_context_for_task(last_user)
         if growth_prompt:
             msgs.append(Message(role="system", content=growth_prompt))
 
-        # 对话历史 (跳过刚加的 user 消息? 不跳过 — provider 需要看到完整历史)
+        # 对话历史 (provider 需要看到完整历史)
         for m in conv.messages:
             msgs.append(Message(role=m.role, content=m.content))
         return msgs
@@ -351,4 +366,7 @@ class ChatService:
         return result
 
 
-__all__ = ["ChatMessage", "Conversation", "ChatResponse", "ChatService"]
+__all__ = [
+    "ChatMessage", "Conversation", "ChatResponse", "ChatService",
+    "is_valid_conversation_id",
+]

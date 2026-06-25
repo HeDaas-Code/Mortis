@@ -13,7 +13,7 @@ issue #88: 对话页面 — ChatService + OpenUI 风格对话交互。
 
 from __future__ import annotations
 
-from .chat import ChatMessage, ChatResponse, ChatService, Conversation
+from .chat import ChatMessage, ChatResponse, ChatService, Conversation, is_valid_conversation_id
 from .notify import (
     NOTIFY_FILE,
     NOTIFY_SUBDIR,
@@ -32,6 +32,7 @@ __all__ = [
     "ChatResponse",
     "ChatService",
     "Conversation",
+    "is_valid_conversation_id",
     # notify
     "NOTIFY_FILE",
     "NOTIFY_SUBDIR",

@@ -469,3 +469,95 @@ class TestChatServiceNotConfigured:
             "message": "x",
         })
         assert status == 503
+
+
+# ============================================================
+# 路径遍历防护 (issue #90)
+# ============================================================
+
+
+class TestPathTraversalGuard:
+    """issue #90: conversation_id 未校验 → path traversal, 可读/删任意 .json 文件。
+
+    验证 is_valid_conversation_id + 各端点拒绝恶意 ID。
+    """
+
+    def test_validate_valid_ids(self) -> None:
+        """合法 conversation_id 通过校验。"""
+        from mortis.web.chat import is_valid_conversation_id
+        assert is_valid_conversation_id("conv-a1b2c3d4e5")
+        assert is_valid_conversation_id("abc123")
+        assert is_valid_conversation_id("conv-xyz-123")
+
+    def test_validate_rejects_traversal(self) -> None:
+        """含路径分隔/遍历字符的 ID 被拒。"""
+        from mortis.web.chat import is_valid_conversation_id
+        assert not is_valid_conversation_id("../../etc/passwd")
+        assert not is_valid_conversation_id("..\\..\\secret")
+        assert not is_valid_conversation_id("a/b")
+        assert not is_valid_conversation_id("a\\b")
+        assert not is_valid_conversation_id("")
+        assert not is_valid_conversation_id("a b")  # 空格
+        assert not is_valid_conversation_id("a.b")  # 点号
+        assert not is_valid_conversation_id("/abs/path")
+
+    def test_validate_rejects_overlong(self) -> None:
+        """超长 ID 被拒。"""
+        from mortis.web.chat import is_valid_conversation_id
+        assert not is_valid_conversation_id("a" * 65)
+
+    def test_get_conversation_rejects_traversal(self, chat_service: ChatService) -> None:
+        """get_conversation 对恶意 ID 返回 None (不读磁盘)。"""
+        assert chat_service.get_conversation("../../secret") is None
+        assert chat_service.get_conversation("../steiner/unease") is None
+
+    def test_delete_conversation_rejects_traversal(
+        self, chat_service: ChatService, vault: Vault,
+    ) -> None:
+        """delete_conversation 对恶意 ID 返回 False (不删文件)。
+
+        关键: 不能让恶意 DELETE 删掉 vault 内任意 .json 文件。
+        """
+        # 在 vault 里放一个 victim .json 文件
+        victim_dir = vault.root / "mortis-steiner"
+        victim_dir.mkdir(parents=True, exist_ok=True)
+        victim = victim_dir / "unease.json"
+        victim.write_text('{"victim": true}', encoding="utf-8")
+        # 尝试用 traversal 删除它: conversations/../../mortis-steiner/unease
+        ok = chat_service.delete_conversation("../../mortis-steiner/unease")
+        assert ok is False
+        assert victim.exists(), "victim 文件不应被删除!"
+
+    def test_get_history_rejects_traversal(self, chat_service: ChatService) -> None:
+        """get_history 对恶意 ID 返回 None。"""
+        assert chat_service.get_history("../../etc/passwd") is None
+
+    def test_api_get_detail_rejects_traversal(self, server_url_chat: str) -> None:
+        """GET /api/conversations/<traversal> 返回 404 (不读文件)。"""
+        status, data = _get_json(
+            server_url_chat, "/api/conversations/../../mortis-steiner/unease",
+        )
+        assert status == 404
+
+    def test_api_delete_rejects_traversal(
+        self, server_url_chat: str, vault: Vault,
+    ) -> None:
+        """DELETE /api/conversations/<traversal> 返回 404 (不删文件)。"""
+        victim_dir = vault.root / "mortis-steiner"
+        victim_dir.mkdir(parents=True, exist_ok=True)
+        victim = victim_dir / "unease.json"
+        victim.write_text('{"victim": true}', encoding="utf-8")
+        status, data = _delete(
+            server_url_chat, "/api/conversations/../../mortis-steiner/unease",
+        )
+        assert status == 404
+        assert victim.exists(), "victim 文件不应被删除!"
+
+    def test_send_with_traversal_cid_creates_new_safe_conv(
+        self, chat_service: ChatService,
+    ) -> None:
+        """send 传入恶意 conversation_id → 新建安全对话 (不沿用恶意 ID)。"""
+        resp = chat_service.send("hi", "../../etc/passwd")
+        assert resp.conversation_id != "../../etc/passwd"
+        assert resp.conversation_id.startswith("conv-")
+
