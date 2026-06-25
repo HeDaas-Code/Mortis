@@ -875,6 +875,401 @@ def render_10_timeline():
     print("✓ diagram-10-timeline.png")
 
 
+# ============================================================
+# E2E Figure 1: Pipeline 主循环调用链
+# ============================================================
+def render_e2e_01_pipeline_chain():
+    fig, ax = _setup_ax((16, 11))
+    ax.set_title("E2E Figure 1 · Pipeline 主循环调用链 — Think→Plan→Act→Review + TaskRouter",
+                 fontsize=14, weight="bold", pad=20)
+
+    # 入口
+    _box(ax, 5, 88, 22, 8, "PipelineExecutor.run()\nexecutor.py:43", fontsize=8, weight="bold")
+    _box(ax, 35, 88, 28, 8, "TaskRouter.route()\nrouter.py:25\n★LLM#0 路由决策", fontsize=8)
+    _arrow(ax, 27, 92, 35, 92)
+
+    # 路由分叉
+    _box(ax, 5, 70, 22, 8, "simple 路径\n直接执行\nexecutor.py:64-103", fontsize=8)
+    _box(ax, 35, 70, 28, 8, "delegated 路径\n派 sub\nexecutor.py:119", fontsize=8)
+    _arrow(ax, 14, 88, 14, 78, "simple")
+    _arrow(ax, 49, 88, 49, 78, "delegated")
+
+    # 4 步 Step
+    steps = [
+        ("ThinkStep.run()\nstep.py:144\n★LLM#1\nprompt: 分析任务\n需要查 vault? 派 sub?", 3, 52),
+        ("PlanStep.run()\nstep.py:178\n★LLM#2\nprompt: 拆解为\n不超过 5 步骤", 25, 52),
+        ("ActStep.run()\nstep.py:212\n★LLM#3\n工具调用循环\nMAX_ITERATIONS=5", 47, 52),
+        ("ReviewStep.run()\nstep.py:254\n★LLM#4\nprompt: 审阅产出\nadopt/discard", 69, 52),
+    ]
+    for text, x, y in steps:
+        _box(ax, x, y, 21, 14, text, fontsize=7)
+    for i in range(3):
+        _arrow(ax, 24 + i * 22, 59, 25 + i * 22, 59)
+
+    # ActStep 内部
+    _box(ax, 47, 36, 21, 12, "while iter < 5:\n  _call_provider(msgs, tools)\n  parse_tool_calls_from_text\n  tools.execute(tc.name, args)", fontsize=7)
+    _arrow(ax, 57, 52, 57, 48, "展开")
+
+    # 工具执行
+    _box(ax, 30, 22, 20, 8, "ToolRegistry.execute()\nregistry.py:34", fontsize=7)
+    _box(ax, 55, 22, 22, 8, "ToolAgent.execute()\n5 内置 Agent\n(vault_read/search/stats)", fontsize=7)
+    _arrow(ax, 53, 36, 40, 30)
+    _arrow(ax, 62, 36, 66, 30)
+
+    # 委派分支
+    _box(ax, 75, 70, 22, 8, "vault.write_sub_output()\nexecutor.py:187\n[VAULT-WRITE]", fontsize=7)
+    _box(ax, 75, 56, 22, 8, "ReviewGate.review()\nreview.py:39", fontsize=7)
+    _box(ax, 75, 42, 22, 8, "ReviewGate.apply()\nreview.py:155\n_safe_write [VAULT-WRITE]", fontsize=7)
+    _arrow(ax, 49, 70, 75, 74)
+    _arrow(ax, 86, 70, 86, 64)
+    _arrow(ax, 86, 56, 86, 50)
+
+    # E2E 验证标记
+    _box(ax, 3, 22, 22, 8, "E2E-04 简单任务\n4 次 LLM, 9.83s\n✓ PASS", fontsize=7, fc="#F8F8F8")
+    _box(ax, 3, 10, 22, 8, "E2E-05 工具调用\n4 次 LLM, 17.79s\n✓ PASS", fontsize=7, fc="#F8F8F8")
+    _box(ax, 28, 10, 22, 8, "E2E-25 完整周期\n10 次 LLM, 75.47s\n✓ PASS", fontsize=7, fc="#F8F8F8")
+    _box(ax, 53, 10, 22, 8, "★LLM#N = LLM 调用点\n[VAULT-WRITE] = 写入", fontsize=7, fc="#F8F8F8")
+    _box(ax, 75, 22, 22, 8, "sub 产出写入\nmortis-journal/\nsub-outputs/", fontsize=7)
+
+    ax.text(2, 2, "★LLM#N = LLM 调用点  [VAULT-WRITE] = vault 写入  → = 调用方向",
+            fontsize=7, color="#555555")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUT_DIR, "e2e-01-pipeline-chain.png"),
+                dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close()
+    print("✓ e2e-01-pipeline-chain.png")
+
+
+# ============================================================
+# E2E Figure 2: ToolAgent 调用链
+# ============================================================
+def render_e2e_02_toolagent_chain():
+    fig, ax = _setup_ax((16, 12))
+    ax.set_title("E2E Figure 2 · ToolAgent 调用链 — VaultRead/Search/Stats 3 个 LLM 调用点 + redact 覆盖",
+                 fontsize=14, weight="bold", pad=20)
+
+    # 三列：Read / Search / Stats
+    # 列 1: VaultReadAgent
+    _box(ax, 2, 88, 30, 8, "VaultReadAgent.execute(input)\nvault_read.py:57", fontsize=8, weight="bold")
+    _arrow(ax, 17, 88, 17, 82)
+    _box(ax, 2, 70, 30, 8, "normalize_rel_path()\nvault_read.py:68\n路径归一化", fontsize=7)
+    _arrow(ax, 17, 70, 17, 64)
+    _box(ax, 2, 56, 30, 8, "blocked_prefixes 检查\nvault_read.py:71-76\nissue #38/#80", fontsize=7)
+    _arrow(ax, 17, 56, 17, 50)
+    _box(ax, 2, 42, 30, 8, "vault.read(rel_path)\nvault_read.py:85", fontsize=7)
+    _arrow(ax, 17, 42, 17, 36)
+    _box(ax, 2, 26, 30, 10, "_summarize(content, max_len)\nvault_read.py:110\n├ _redact_snippet[:2000]\n└ provider.generate_text ★LLM#4", fontsize=7)
+    _box(ax, 2, 12, 30, 6, "E2E-06 ✓ PASS\n6.31s, 1 LLM, summary=80", fontsize=7, fc="#F8F8F8")
+
+    # 列 2: VaultSearchAgent
+    _box(ax, 35, 88, 30, 8, "VaultSearchAgent.execute(input)\nvault_search.py:65", fontsize=8, weight="bold")
+    _arrow(ax, 50, 88, 50, 82)
+    _box(ax, 35, 70, 30, 8, "list_growths_by_tag()\nlist_growths() 粗筛\nvault_search.py:79-85", fontsize=7)
+    _arrow(ax, 50, 70, 50, 64)
+    _box(ax, 35, 56, 30, 8, "全文过滤\n_snippet(body, q, redact=True)\n_redact_snippet [REDACT]", fontsize=7)
+    _arrow(ax, 50, 56, 50, 50)
+    _box(ax, 35, 42, 30, 8, "_semantic_rerank(matches, q)\nvault_search.py:151", fontsize=7)
+    _arrow(ax, 50, 42, 50, 36)
+    _box(ax, 35, 26, 30, 10, "_redact_snippet(m['snippet])\nprovider.generate_text ★LLM#5\n返回 rerank 后结果", fontsize=7)
+    _box(ax, 35, 12, 30, 6, "E2E-07 ✓ PASS\n4.07s, 1 LLM, matches=1", fontsize=7, fc="#F8F8F8")
+
+    # 列 3: VaultStatsAgent
+    _box(ax, 68, 88, 30, 8, "VaultStatsAgent.execute(input)\nvault_stats.py:39", fontsize=8, weight="bold")
+    _arrow(ax, 83, 88, 83, 82)
+    _box(ax, 68, 70, 30, 8, "vault.list_growths()\nvault_stats.py:43", fontsize=7)
+    _arrow(ax, 83, 70, 83, 64)
+    _box(ax, 68, 56, 30, 8, "逐个 read_growth\n统计 by_dimension\n+ histogram", fontsize=7)
+    _arrow(ax, 83, 56, 83, 50)
+    _box(ax, 68, 42, 30, 8, "_analyze_stats(total,\nby_dim, hist)\nvault_stats.py:82", fontsize=7)
+    _arrow(ax, 83, 42, 83, 36)
+    _box(ax, 68, 26, 30, 10, "provider.generate_text ★LLM#6\n(无 redact —\n仅传聚合数字)", fontsize=7)
+    _box(ax, 68, 12, 30, 6, "E2E-08 ✓ PASS\n50.11s, 1 LLM, analysis=有", fontsize=7, fc="#F8F8F8")
+
+    # redact 标注
+    _box(ax, 2, 2, 30, 6, "[REDACT] 点\n_summarize redact ✓", fontsize=7, fc="#F0F0F0")
+    _box(ax, 35, 2, 30, 6, "[REDACT] 点 ×2\n_snippet + _semantic_rerank ✓", fontsize=7, fc="#F0F0F0")
+    _box(ax, 68, 2, 30, 6, "无私密字段\n仅聚合数字", fontsize=7, fc="#F0F0F0")
+
+    ax.text(33, 1, "★LLM#N = LLM 调用点  [REDACT] = redact 脱敏点  灰底=安全检查",
+            fontsize=7, color="#555555")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUT_DIR, "e2e-02-toolagent-chain.png"),
+                dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close()
+    print("✓ e2e-02-toolagent-chain.png")
+
+
+# ============================================================
+# E2E Figure 3: Reflect 调用链
+# ============================================================
+def render_e2e_03_reflect_chain():
+    fig, ax = _setup_ax((16, 10))
+    ax.set_title("E2E Figure 3 · Reflect 调用链 — session 加载 → LLM 反思 → emotion 打分 → vault 写入",
+                 fontsize=14, weight="bold", pad=20)
+
+    # 主流程
+    _box(ax, 30, 88, 40, 8, "ReflectExecutor.run(session_paths, sessions_dir)\nexecutor.py:138", fontsize=8, weight="bold")
+    _arrow(ax, 50, 88, 50, 82)
+
+    # 步骤 1
+    _box(ax, 5, 70, 25, 8, "_load_sessions()\nexecutor.py:153\nSession.load(parent, sid)", fontsize=7)
+    _box(ax, 38, 70, 25, 8, "_summarize_sessions()\nexecutor.py:154\n拼文本 [session #i]...", fontsize=7)
+    _box(ax, 70, 70, 25, 8, "_next_reflection_id()\nexecutor.py:161\n→ reflect-YYYY-MM-DD-NNN", fontsize=7)
+    _arrow(ax, 18, 70, 38, 70)
+    _arrow(ax, 50, 70, 70, 70)
+    _arrow(ax, 50, 88, 18, 78)
+    _arrow(ax, 50, 88, 50, 78)
+    _arrow(ax, 50, 88, 82, 78)
+
+    # 反思 + emotion (并列)
+    _box(ax, 5, 50, 40, 12, "_generate_reflection(sessions_text)\nexecutor.py:231 ★LLM#8\nprompt: _REFLECT_PROMPT\n生成 80~150 字第一人称中文反思", fontsize=7)
+    _box(ax, 55, 50, 40, 12, "score_emotion(provider, key, text)\nexecutor.py:159\n├ redact_snippet(text) [REDACT]\n├ provider.generate_text ★LLM#8b\n└ _parse_emotion_response → (v, a)", fontsize=7)
+    _arrow(ax, 25, 70, 25, 62, "反思")
+    _arrow(ax, 75, 70, 75, 62, "emotion")
+
+    # 写入
+    _box(ax, 30, 30, 40, 12, "vault.write(rel, content, whitelist=None)\nexecutor.py:175  [VAULT-WRITE]\n路径: mortis-subconscious/\n       pending-reflections/<rid>.md", fontsize=7)
+    _arrow(ax, 25, 50, 35, 42, "写")
+    _arrow(ax, 75, 50, 65, 42, "(emotion 附加)")
+
+    # 数据结构
+    _box(ax, 5, 14, 22, 10, "Reflection\nbody: 80~150 字\nvalence -1~1\narousal 0~1", fontsize=7, fc="#F8F8F8")
+    _box(ax, 38, 14, 22, 10, "Emotion\nvalence, arousal\n→ emotion_weight = |v|×a\n(供 dream recall 用)", fontsize=7, fc="#F8F8F8")
+    _box(ax, 70, 14, 25, 10, "pending-reflections/\n后续触发:\nLight/MediumDreamer RECALL\n扫描 session", fontsize=7, fc="#F8F8F8")
+    _arrow(ax, 40, 30, 16, 24)
+    _arrow(ax, 50, 30, 49, 24)
+    _arrow(ax, 60, 30, 82, 24)
+
+    # E2E 验证
+    _box(ax, 5, 2, 35, 8, "E2E-11 ✓ PASS\n62.12s, 2 LLM (反思+emotion)\nbody 长度 5891, valence=0.00", fontsize=7, fc="#F0F0F0")
+    _box(ax, 45, 2, 25, 8, "E2E-25 REFLECT 阶段\n2 次 LLM\nreflect=4650 字", fontsize=7, fc="#F0F0F0")
+    _box(ax, 75, 2, 22, 8, "REDACT 覆盖\nscore_emotion\n已脱敏 ✓", fontsize=7, fc="#F0F0F0")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUT_DIR, "e2e-03-reflect-chain.png"),
+                dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close()
+    print("✓ e2e-03-reflect-chain.png")
+
+
+# ============================================================
+# E2E Figure 4: Dream 流水线调用链
+# ============================================================
+def render_e2e_04_dream_chain():
+    fig, ax = _setup_ax((16, 13))
+    ax.set_title("E2E Figure 4 · Dream 流水线调用链 — Light 4 phase / Medium 5 phase / Deep 7 phase",
+                 fontsize=14, weight="bold", pad=20)
+
+    # Light (4 phase)
+    ax.text(5, 92, "LightDreamer (4 phase) — E2E-12 ✓ 14.32s, 4 LLM", fontsize=11, weight="bold")
+    light = [
+        ("RECALL\nlight.py:103\n扫 sessions/\nscore_emotion ★LLM#9a\nemotion_weighted_sample", 3, 78),
+        ("ASSOCIATE\nlight.py:196\nassociate() ★LLM#10\nredact ✓\n返回 {body, tags}", 26, 78),
+        ("CRYSTALLIZE\nlight.py:219\ninfer_dimension\nmake_candidate conf=0.3\nwrite_growth [VAULT-WRITE]", 49, 78),
+        ("RECONCILE\nlight.py:268\n_detect_conflicts\n_write_conflict\n[VAULT-WRITE]", 72, 78),
+    ]
+    for text, x, y in light:
+        _box(ax, x, y, 22, 12, text, fontsize=7)
+    for i in range(3):
+        _arrow(ax, 25 + i * 23, 84, 26 + i * 23, 84)
+
+    # Medium (5 phase)
+    ax.text(5, 67, "MediumDreamer (5 phase) — E2E-13 ✓ 12.50s, 5 LLM", fontsize=11, weight="bold")
+    medium = [
+        ("RECALL\nmedium.py:91\n跨周采样", 3, 53),
+        ("ASSOCIATE\nmedium.py:136\n★LLM", 23, 53),
+        ("SIMULATE\nmedium.py:156\n启发式预演\nconf 0.3→0.5", 43, 53),
+        ("CRYSTALLIZE\nmedium.py:201\n[VAULT-WRITE]", 63, 53),
+        ("RECONCILE\nmedium.py:256\n[VAULT-WRITE]", 83, 53),
+    ]
+    for text, x, y in medium:
+        _box(ax, x, y, 15, 12, text, fontsize=6)
+    for i in range(4):
+        _arrow(ax, 18 + i * 20, 59, 20 + i * 20, 59)
+
+    # Deep (7 phase)
+    ax.text(5, 42, "DeepDreamer (7 phase) — E2E-14 ✓ 8.90s, 7 LLM", fontsize=11, weight="bold")
+    deep = [
+        ("RECALL\ndeep.py:76\n重读全量", 1, 28),
+        ("ASSOC\ndeep.py:100\n★LLM", 14, 28),
+        ("SIM\ndeep.py:124", 27, 28),
+        ("CRYST\ndeep.py:146\n[VAULT-W]", 40, 28),
+        ("RECON\ndeep.py:174\n[VAULT-W]", 53, 28),
+        ("ERODE\ndeep.py:223\n×0.85^days\n[VAULT-W]", 66, 28),
+        ("SEED_CHECK\ndeep.py:264\n★LLM#7 redact\nlog_drift\n[VAULT-W]", 79, 28),
+    ]
+    for text, x, y in deep:
+        _box(ax, x, y, 12, 12, text, fontsize=6)
+    for i in range(6):
+        _arrow(ax, 13 + i * 13, 34, 14 + i * 13, 34)
+
+    # ERODE + SEED_CHECK 详细
+    _box(ax, 1, 14, 45, 10, "phase_erode(): erode_growths(all) 按 last_validated 距今天数衰减\n  ├ survived → vault.write_growth(g) 重写\n  └ expired → vault.archive_growth(dim, id) os.rename 原子归档", fontsize=6)
+    _box(ax, 50, 14, 48, 10, "phase_seed_check(): seed_check(seed, summary, provider, vault)\n  ├ redact_snippet(growth_summary)  ← issue #84 CRITICAL\n  ├ provider.generate_text ★LLM#7 → DriftReport(per_dim, total, needs_notify)\n  └ log_drift(vault) → mortis-subconscious/drift-log.json", fontsize=6)
+
+    # E2E-15 单独
+    _box(ax, 1, 4, 45, 8, "E2E-15 ✓ PASS\n12.01s, 1 LLM\ntotal_drift=0.60, needs_notify=False\nREDACT 覆盖 ✓", fontsize=7, fc="#F0F0F0")
+    _box(ax, 50, 4, 48, 8, "信号产出\nGrowth confidence 0.3→0.5→衰减\nDriftReport 误报率监控\nemotion cache 不持久化", fontsize=7, fc="#F8F8F8")
+
+    ax.text(33, 1, "★LLM#N = LLM 调用点  [VAULT-WRITE] = vault 写入  redact ✓ = 已脱敏",
+            fontsize=7, color="#555555")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUT_DIR, "e2e-04-dream-chain.png"),
+                dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close()
+    print("✓ e2e-04-dream-chain.png")
+
+
+# ============================================================
+# E2E Figure 5: 完整认知周期信息流转
+# ============================================================
+def render_e2e_05_info_flow():
+    fig, ax = _setup_ax((16, 13))
+    ax.set_title("E2E Figure 5 · 完整认知周期信息流转 — AWAKE→REFLECT→DREAM_LIGHT 端到端 (E2E-25)",
+                 fontsize=14, weight="bold", pad=20)
+
+    # 3 阶段
+    # AWAKE
+    _box(ax, 2, 88, 96, 6, "[1] AWAKE 阶段 (10 次 LLM 中的 4 次) — owner 输入 → session 落盘",
+         fontsize=10, weight="bold", fc="#F5F5F5")
+
+    _box(ax, 2, 76, 22, 8, "owner 输入\n\"总结你今天学到了什么\"", fontsize=7)
+    _box(ax, 28, 76, 22, 8, "MasterRuntime\n.create_thread(task)\nmaster.py:49", fontsize=7)
+    _box(ax, 54, 76, 22, 8, "RuntimeContext\n.make_context(thread, tools)\ncontext.py:130", fontsize=7)
+    _box(ax, 80, 76, 18, 8, "session 落盘\nmortis-journal/\nsessions/<date>/<tid>.json", fontsize=7)
+    _arrow(ax, 24, 80, 28, 80)
+    _arrow(ax, 50, 80, 54, 80)
+    _arrow(ax, 76, 80, 80, 80)
+
+    # system prompt 注入
+    _box(ax, 2, 62, 22, 8, "system[0] =\nseed.get_dimension('tone')\n人格语气", fontsize=7, fc="#F8F8F8")
+    _box(ax, 28, 62, 22, 8, "system[1] =\nunease_prompt_for_injection()\n潜台词 (若有)", fontsize=7, fc="#F8F8F8")
+    _box(ax, 54, 62, 22, 8, "system[2] =\ngrowth_context_for_task()\n相关 growth (已 redact)", fontsize=7, fc="#F8F8F8")
+    _box(ax, 80, 62, 18, 8, "history =\nthread 对话历史", fontsize=7, fc="#F8F8F8")
+    _arrow(ax, 65, 76, 13, 70)
+    _arrow(ax, 65, 76, 39, 70)
+    _arrow(ax, 65, 76, 65, 70)
+    _arrow(ax, 89, 76, 89, 70)
+
+    # Pipeline 4 步
+    _box(ax, 2, 48, 22, 8, "ThinkStep ★LLM#1\n分析任务", fontsize=7)
+    _box(ax, 28, 48, 22, 8, "PlanStep ★LLM#2\n拆解步骤", fontsize=7)
+    _box(ax, 54, 48, 22, 8, "ActStep ★LLM#3\n执行(可能调工具)", fontsize=7)
+    _box(ax, 80, 48, 18, 8, "ReviewStep ★LLM#4\n审阅产出", fontsize=7)
+    for i in range(3):
+        _arrow(ax, 24 + i * 26, 52, 28 + i * 26, 52)
+    _arrow(ax, 65, 62, 13, 56)
+    _arrow(ax, 65, 62, 39, 56)
+    _arrow(ax, 65, 62, 65, 56)
+    _arrow(ax, 89, 62, 89, 56)
+
+    # thread.complete
+    _box(ax, 28, 36, 44, 6, "thread.complete(output) → _save_thread() → 更新 sessions/<tid>.json", fontsize=7, fc="#F8F8F8")
+    _arrow(ax, 89, 48, 50, 42)
+
+    # REFLECT
+    _box(ax, 2, 28, 96, 6, "[2] REFLECT 阶段 (2 次 LLM) — 读取 session → 生成反思 + emotion → vault 写入",
+         fontsize=10, weight="bold", fc="#F5F5F5")
+    _box(ax, 2, 16, 22, 8, "ReflectExecutor.run\n扫 sessions/<sid>.json", fontsize=7)
+    _box(ax, 28, 16, 22, 8, "_generate_reflection ★LLM#8\n生成 80~150 字反思", fontsize=7)
+    _box(ax, 54, 16, 22, 8, "score_emotion ★LLM#8b\nredact_snippet ✓\nvalence, arousal", fontsize=7)
+    _box(ax, 80, 16, 18, 8, "vault.write\n[VAULT-WRITE]\npending-reflections/\n<rid>.md", fontsize=7)
+    _arrow(ax, 24, 20, 28, 20)
+    _arrow(ax, 50, 20, 54, 20)
+    _arrow(ax, 76, 20, 80, 20)
+    _arrow(ax, 50, 36, 13, 24)
+
+    # DREAM_LIGHT
+    _box(ax, 2, 8, 96, 6, "[3] DREAM_LIGHT 阶段 (4 次 LLM) — RECALL→ASSOCIATE→CRYSTALLIZE→RECONCILE",
+         fontsize=10, weight="bold", fc="#F5F5F5")
+    _box(ax, 2, 0, 22, 6, "RECALL ★LLM#9a\n扫 sessions + score_emotion\nemotion_weighted_sample", fontsize=6)
+    _box(ax, 28, 0, 22, 6, "ASSOCIATE ★LLM#10\nredact ✓ → 找共同模式", fontsize=6)
+    _box(ax, 54, 0, 22, 6, "CRYSTALLIZE\nwrite_growth [VAULT-WRITE]\n触发 watcher → unease", fontsize=6)
+    _box(ax, 80, 0, 18, 6, "RECONCILE\n写 conflicts/\n[VAULT-WRITE]", fontsize=6)
+    for i in range(3):
+        _arrow(ax, 24 + i * 26, 3, 28 + i * 26, 3)
+    _arrow(ax, 89, 16, 89, 8)
+    _arrow(ax, 65, 16, 65, 8)
+    _arrow(ax, 39, 16, 39, 8)
+    _arrow(ax, 13, 16, 13, 8)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUT_DIR, "e2e-05-info-flow.png"),
+                dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close()
+    print("✓ e2e-05-info-flow.png")
+
+
+# ============================================================
+# E2E Figure 6: 信号传播图
+# ============================================================
+def render_e2e_06_signal_flow():
+    fig, ax = _setup_ax((16, 11))
+    ax.set_title("E2E Figure 6 · 信号传播图 — growth 写入触发 watcher → unease 积累 → 注入 system prompt → 影响 LLM 输出",
+                 fontsize=14, weight="bold", pad=20)
+
+    # 1. growth 写入 (信号源)
+    _box(ax, 3, 85, 22, 10, "1. 信号源\nLightDreamer.CRYSTALLIZE\nvault.write_growth\n[VAULT-WRITE]\nmortis-growth/<dim>/<id>.md", fontsize=7, weight="bold")
+    _arrow(ax, 25, 90, 33, 90, "文件变更事件")
+
+    # 2. GrowthWatcher
+    _box(ax, 33, 85, 22, 10, "2. GrowthWatcher\nwatchdog Observer\nwatcher.py:169\nhandler._on_modified\n提取 Dimension", fontsize=7)
+    _arrow(ax, 55, 90, 63, 90, "callback(dim)")
+
+    # 3. SteinerController
+    _box(ax, 63, 85, 22, 10, "3. SteinerController\n_on_edit(dim)\nlifecycle.py:47\ndebounce 1s\n→ accumulate", fontsize=7)
+    _arrow(ax, 74, 85, 74, 75, "触发")
+
+    # 4. accumulate + save
+    _box(ax, 63, 65, 32, 10, "4. accumulate(state, dim, delta=+0.1)\nunease.py:150\nper_dimension[dim] += 0.1\n→ save_unease(vault, state)\n[VAULT-WRITE] mortis-steiner/unease.json", fontsize=7)
+    _arrow(ax, 95, 65, 95, 50, "保存")
+
+    # 5. 注入 RuntimeContext
+    _box(ax, 3, 60, 30, 8, "5. RuntimeContext\nmessages_for_provider()\ncontext.py:130", fontsize=7, weight="bold")
+    _box(ax, 38, 60, 22, 8, "unease_prompt_for_injection()\ncontext.py:110\nload_unease + decay", fontsize=7)
+    _box(ax, 3, 48, 30, 8, "unease_prompt(state)\nprompt.py:53\n5 档文案 (none/light/\nmedium/heavy/severe)", fontsize=7)
+    _box(ax, 38, 48, 22, 8, "Message(role=system,\ncontent=unease_text)\n注入位置: tone 之后\ngrowth 之前", fontsize=7)
+    _arrow(ax, 79, 65, 18, 60, "读取 unease")
+    _arrow(ax, 18, 60, 18, 56)
+    _arrow(ax, 33, 64, 38, 64)
+    _arrow(ax, 49, 60, 18, 56)
+    _arrow(ax, 49, 48, 49, 44, "注入")
+
+    # 6. 影响 LLM
+    _box(ax, 3, 32, 40, 10, "6. LLM 调用 ★LLM#1-#4\nThinkStep/PlanStep/ActStep/ReviewStep\nctx.provider.generate(messages)\nmessages[0] 含 unease 潜台词", fontsize=7, weight="bold")
+    _arrow(ax, 25, 48, 25, 42)
+
+    # 7. drift 检测 (闭环另一条路)
+    _box(ax, 55, 32, 40, 10, "7. drift 检测 (DeepDreamer)\nseed_check(seed, growth_summary,\nprovider, vault) ★LLM#7\nredact_snippet ✓\n→ DriftReport", fontsize=7)
+    _arrow(ax, 63, 65, 75, 42, "另一个出口")
+
+    # 8. owner 通知 (闭环)
+    _box(ax, 55, 14, 40, 10, "8. should_notify_owner(unease)\ndrift.py:22\nmax(per_dim) ≥ 0.75\n→ owner-notify.json\n[VAULT-WRITE]\n→ web/notify.py", fontsize=7)
+    _arrow(ax, 75, 32, 75, 24, "drift 报警")
+
+    # 9. 闭环
+    _box(ax, 3, 14, 40, 10, "9. 闭环\nowner 收到 drift 报警\n→ 编辑 growth 记忆\n→ 回到 step 1 (GrowthWatcher 检测)", fontsize=7, fc="#F8F8F8", weight="bold")
+    _arrow(ax, 75, 14, 43, 18, "owner 编辑", ls="--", lw=1.2)
+
+    # 信号数据结构标注
+    _box(ax, 3, 2, 22, 6, "unease_state\nper_dimension: dict\nmax_unease(): float\nsteiner/unease.py:63", fontsize=6, fc="#F0F0F0")
+    _box(ax, 28, 2, 22, 6, "DriftReport\nper_dimension\ntotal_drift\nneeds_notify\nseed_check.py:38", fontsize=6, fc="#F0F0F0")
+    _box(ax, 53, 2, 22, 6, "Growth\ndimension(7)\nconfidence\nemotional_*\nredact 覆盖 ✓", fontsize=6, fc="#F0F0F0")
+    _box(ax, 78, 2, 18, 6, "emotion_weight\n|v|×a\nrecall.py:26", fontsize=6, fc="#F0F0F0")
+
+    ax.text(33, 1, "→ 信号传递  ╌ 闭环反馈  ★LLM#N = LLM 调用点  [VAULT-WRITE] = vault 写入",
+            fontsize=7, color="#555555")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUT_DIR, "e2e-06-signal-flow.png"),
+                dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close()
+    print("✓ e2e-06-signal-flow.png")
+
+
 if __name__ == "__main__":
     render_01_arch_layers()
     render_02_pipeline_flow()
@@ -886,4 +1281,10 @@ if __name__ == "__main__":
     render_08_steiner_hidden()
     render_09_test_coverage()
     render_10_timeline()
-    print("\n全部 10 张图渲染完成")
+    render_e2e_01_pipeline_chain()
+    render_e2e_02_toolagent_chain()
+    render_e2e_03_reflect_chain()
+    render_e2e_04_dream_chain()
+    render_e2e_05_info_flow()
+    render_e2e_06_signal_flow()
+    print("\n全部 16 张图渲染完成 (10 审计 + 6 E2E)")

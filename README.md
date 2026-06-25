@@ -280,6 +280,8 @@ RFC-001 的 9 个模块都已实现并通过测试，但它们 **还没有接入
 - [RFC-001 开放问题裁剪](docs/rfc/RFC-001-open-questions-decision.md) — 7 个开放问题的 owner 决策
 - [Mortis v3 方法级代码审计报告（图文版）](docs/mortis-audit-v3/mortis-audit-v3.md) — 人类阅读，含 10 张白底黑字架构图
 - [Mortis v3 方法级代码审计报告（Agent 版）](docs/mortis-audit-v3/mortis-audit-v3-agent.md) — AI Agent 阅读，纯文本结构化，无图片
+- [Mortis v3 全项 E2E 生产级实验报告（图文版）](docs/mortis-audit-v3/e2e-report.md) — 人类阅读，含 6 张调用链 + 信息流转图
+- [Mortis v3 全项 E2E 生产级实验报告（Agent 版）](docs/mortis-audit-v3/e2e-report-agent.md) — AI Agent 阅读，纯文本结构化，无图片
 
 ## 我从来没有觉得烧Token开心过
 
@@ -299,6 +301,21 @@ Mortis 经过多轮独立代码审计，最新 v3 审计报告覆盖方法级调
 - 3 个 MEDIUM 安全/质量问题（已修复 + 10 条回归测试）
 - 2 个测试 time-bomb 隐患（已修复，动态日期替代硬编码）
 - 2 条架构改进建议 + 2 条优化建议
+
+## E2E 生产级实验
+
+Mortis v3 在真实 minimax MiniMax-M3 API 环境下进行全项端到端（E2E）生产级测试，覆盖审计报告 §02 中全部 11 个 LLM 调用点、6 个安全机制、3 级 Dream 流水线、完整认知周期（AWAKE→REFLECT→DREAM_LIGHT）。报告含完整调用链分析（含文件名 + 行号 + ASCII 调用树）、信息流转模拟、Vault 写入点追踪、信号传播图。报告提供两个版本，按读者类型选择：
+
+| 读者 | 文件 | 说明 |
+|------|------|------|
+| **人类** | → [图文版](docs/mortis-audit-v3/e2e-report.md) | 含 6 张白底黑字调用链 + 信息流转图 + 调用链 + 安全矩阵 |
+| **AI Agent** | → [Agent 版](docs/mortis-audit-v3/e2e-report-agent.md) | 纯文本结构化，无图片引用，便于解析 |
+
+**E2E 实验摘要**：
+- 25/25 步骤 100% 通过率，44 次真实 LLM 调用，总耗时 285.67s
+- 11/11 LLM 调用点全部验证（pipeline 3 + toolagent 3 + dream 4 + reflect 1）
+- 6/6 安全机制全部拦截（redact / 白名单 / blocked_prefixes / 审计 hash）
+- 完整认知周期 AWAKE→REFLECT→DREAM_LIGHT 端到端通过（E2E-25, 75.47s, 10 LLM）
 
 ## 许可
 

@@ -1,10 +1,10 @@
-# Mortis v3 全项 E2E 生产级实验报告（图文版）
+# Mortis v3 全项 E2E 生产级实验报告（Agent 阅读版）
 
-> **HUMAN-READABLE VERSION (WITH DIAGRAMS)** — 本文件含架构图 + 调用链 + 信息流转图，适合人类阅读。
-> AI Agent 请阅读 [e2e-report-agent.md](e2e-report-agent.md)（纯文本结构化版本，无图片引用）。
->
+> **AGENT-READABLE VERSION** — 本文件移除所有图片引用，纯文本结构化展现，便于 AI Agent 解析阅读。
+> 人类读者请阅读 [e2e-report.md](e2e-report.md)（含 6 张白底黑字架构图 + 调用链 + 信息流转图）。
+
 > **E2E EXPERIMENT REPORT · v1.1 · WITH CALL CHAIN + SIGNAL FLOW**
->
+
 > 分支: `main` | 日期: 2026-06-25 | Provider: MinimaxProvider (MiniMax-M3, 真实 API 调用) | 开始: 2026-06-25T03:46:58Z | 结束: 2026-06-25T03:51:44Z | 总耗时: 285.7s
 
 | 总步骤 | 通过 | 失败 | 通过率 | LLM 调用 | 步骤总耗时 |
@@ -132,9 +132,7 @@ PipelineExecutor / ToolAgent / Dreamer / Reflector 共用
 
 ### 4.1 Pipeline 主循环调用链（E2E-04/05/25）
 
-![Figure 1](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/e2e-01-pipeline-chain.png)
-
-> **Figure 1**: Pipeline 主循环调用链 — Think→Plan→Act→Review 4 步 + TaskRouter 路由判断
+[图说 1] Pipeline 主循环调用链 — Think→Plan→Act→Review 4 步 + TaskRouter 路由判断。图示结构：入口 PipelineExecutor.run() → TaskRouter.route() (★LLM#0 路由决策) → 分叉 simple 路径(直接执行) / delegated 路径(派 sub) → 4 步 Step 串联 ThinkStep(★LLM#1)→PlanStep(★LLM#2)→ActStep(★LLM#3 工具循环 MAX_ITERATIONS=5)→ReviewStep(★LLM#4)；委派分支另含 vault.write_sub_output [VAULT-WRITE] → ReviewGate.review → ReviewGate.apply → _safe_write [VAULT-WRITE]。底部标注 E2E-04/05/25 三步验证结果。
 
 **完整调用链**:
 
@@ -185,9 +183,7 @@ PipelineExecutor.run() [executor.py:43]
 
 ### 4.2 ToolAgent 调用链（E2E-06/07/08）
 
-![Figure 2](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/e2e-02-toolagent-chain.png)
-
-> **Figure 2**: ToolAgent 调用链 — VaultRead/Search/Stats 三个 LLM 调用点 + redact 覆盖
+[图说 2] ToolAgent 调用链 — VaultRead/Search/Stats 三个 LLM 调用点 + redact 覆盖。图示三列并行结构：列1 VaultReadAgent: execute→normalize_rel_path→blocked_prefixes检查→vault.read→_summarize(_redact_snippet + ★LLM#4)；列2 VaultSearchAgent: execute→list_growths粗筛→全文过滤(_snippet redact)→_semantic_rerank(_redact_snippet + ★LLM#5)→双链图BFS；列3 VaultStatsAgent: execute→list_growths→逐个read_growth统计→_analyze_stats(★LLM#6, 无redact因仅传聚合数字)。底部标注三步 E2E 验证结果。
 
 **VaultReadAgent 调用链** (E2E-06):
 ```
@@ -226,9 +222,7 @@ VaultStatsAgent.execute(input) [vault_stats.py:39]
 
 ### 4.3 Reflect 调用链（E2E-11/25）
 
-![Figure 3](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/e2e-03-reflect-chain.png)
-
-> **Figure 3**: Reflect 调用链 — session 加载 → LLM 反思 → emotion 打分 → vault 写入
+[图说 3] Reflect 调用链 — session 加载 → LLM 反思 → emotion 打分 → vault 写入。图示结构：ReflectExecutor.run 顶部入口 → 三步预处理(_load_sessions / _summarize_sessions / _next_reflection_id) → 并列双 LLM 调用(_generate_reflection ★LLM#8 / score_emotion ★LLM#8b 含 redact_snippet) → vault.write [VAULT-WRITE] 写入 pending-reflections/<rid>.md → 后续触发 Light/MediumDreamer RECALL 扫描。底部标注 E2E-11/25 验证结果与 REDACT 覆盖确认。
 
 **完整调用链**:
 ```
@@ -252,9 +246,7 @@ ReflectExecutor.run(session_paths, sessions_dir) [executor.py:138]
 
 ### 4.4 Dream 流水线调用链（E2E-12/13/14）
 
-![Figure 4](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/e2e-04-dream-chain.png)
-
-> **Figure 4**: Dream 流水线调用链 — Light 4 phase / Medium 5 phase / Deep 7 phase
+[图说 4] Dream 流水线调用链 — Light 4 phase / Medium 5 phase / Deep 7 phase。图示三行并列结构：第一行 LightDreamer(4 phase) RECALL(★LLM#9a score_emotion + emotion_weighted_sample)→ASSOCIATE(★LLM#10 redact)→CRYSTALLIZE(write_growth [VAULT-WRITE])→RECONCILE(_write_conflict [VAULT-WRITE])；第二行 MediumDreamer(5 phase) 加 SIMULATE(conf 0.3→0.5)；第三行 DeepDreamer(7 phase) 加 ERODE(×0.85^days 衰减 + archive_growth 原子归档) 和 SEED_CHECK(seed_check ★LLM#7 redact → DriftReport → log_drift)。底部标注 E2E-12/13/14/15 四步验证结果与信号产出。
 
 **LightDreamer 4 phase** (E2E-12):
 ```
@@ -310,9 +302,7 @@ DeepDreamer 额外 phase:
 
 ### 5.1 完整认知周期信息流（E2E-25）
 
-![Figure 5](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/e2e-05-info-flow.png)
-
-> **Figure 5**: 完整认知周期信息流转 — AWAKE→REFLECT→DREAM_LIGHT 三阶段端到端
+[图说 5] 完整认知周期信息流转 — AWAKE→REFLECT→DREAM_LIGHT 三阶段端到端。图示三阶段分层结构：阶段1 AWAKE(4 LLM): owner输入→MasterRuntime.create_thread→RuntimeContext.make_context(注入 system[0]=tone / system[1]=unease / system[2]=growth redact / history)→Pipeline 4步 ThinkStep★LLM#1→PlanStep★LLM#2→ActStep★LLM#3→ReviewStep★LLM#4→thread.complete→session落盘；阶段2 REFLECT(2 LLM): ReflectExecutor.run读session→_generate_reflection★LLM#8→score_emotion★LLM#8b(redact)→vault.write [VAULT-WRITE] pending-reflections；阶段3 DREAM_LIGHT(4 LLM): RECALL★LLM#9a→ASSOCIATE★LLM#10(redact)→CRYSTALLIZE(write_growth [VAULT-WRITE] 触发watcher→unease)→RECONCILE(写conflicts/ [VAULT-WRITE])。
 
 **信息流转路径**:
 
@@ -432,9 +422,7 @@ Vault.write(rel_path, content, whitelist) [local.py:98]
 
 ### 7.2 信号传播图
 
-![Figure 6](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/e2e-06-signal-flow.png)
-
-> **Figure 6**: 信号传播图 — growth 写入触发 watcher → unease 积累 → 注入 system prompt → 影响 LLM 输出
+[图说 6] 信号传播图 — growth 写入触发 watcher → unease 积累 → 注入 system prompt → 影响 LLM 输出。图示闭环结构：1.信号源(LightDreamer.CRYSTALLIZE vault.write_growth [VAULT-WRITE]) → 2.GrowthWatcher(watchdog Observer handler._on_modified 提取Dimension) → 3.SteinerController(_on_edit debounce 1s → accumulate) → 4.accumulate+save_unease(per_dimension[dim]+=0.1 → [VAULT-WRITE] mortis-steiner/unease.json) → 5.RuntimeContext.messages_for_provider + unease_prompt_for_injection(load_unease+decay) + unease_prompt(5档文案) → 6.LLM调用★LLM#1-#4(messages[0]含unease潜台词)；另一出口 7.drift检测(DeepDreamer seed_check ★LLM#7 redact → DriftReport) → 8.should_notify_owner(max(per_dim)≥0.75 → owner-notify.json [VAULT-WRITE] → web/notify.py) → 9.闭环(owner收到drift报警→编辑growth记忆→回到step1)。底部标注四个信号数据结构: unease_state / DriftReport / Growth / emotion_weight。
 
 ---
 
