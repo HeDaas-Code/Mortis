@@ -48,7 +48,8 @@ plt.rcParams.update({
     "font.size": 9,
 })
 
-OUT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images")
+os.makedirs(OUT_DIR, exist_ok=True)
 
 
 def _box(ax, x, y, w, h, text, fc="#FFFFFF", ec="#000000", lw=1.2, fontsize=8, weight="normal"):

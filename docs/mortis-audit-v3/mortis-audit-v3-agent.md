@@ -1,8 +1,8 @@
-# Mortis v3 代码审计报告（图文版）— 方法级 + 测试覆盖率 + 时间轴
+# Mortis v3 代码审计报告（Agent 阅读版）— 方法级 + 测试覆盖率 + 时间轴
 
-> **HUMAN-READABLE VERSION (WITH DIAGRAMS)** — 本文件含 10 张白底黑字架构图，适合人类阅读。
-> AI Agent 请阅读 [mortis-audit-v3-agent.md](mortis-audit-v3-agent.md)（纯文本结构化版本，无图片引用）。
->
+> **AGENT-READABLE VERSION** — 本文件移除所有图片引用，纯文本结构化展现，便于 AI Agent 解析阅读。
+> 人类读者请阅读 [mortis-audit-v3.md](mortis-audit-v3.md)（含 10 张白底黑字架构图）。
+
 > **CODE AUDIT REPORT · v3.1 · METHOD-LEVEL + TEST COVERAGE + TIMELINE**
 >
 > 分支: `main` (含 PR #66 合并) | 日期: 2026-06-25 | 代码量: ~9,800 行源码 + 7,200 行测试 | 测试: 986 passed, 2 skipped | Issues: 88 全部关闭
@@ -559,9 +559,8 @@
 
 ### 3.2 测试覆盖热力图
 
-![Figure 9](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-09-test-coverage.png)
 
-> **Figure 9**: 测试覆盖率热力图 — 78 个流程节点 × 测试文件数。红框=未覆盖，浅灰=薄弱（1 文件），深灰=密集（6+ 文件）
+**[图说] Figure 9**: 测试覆盖率热力图 — 78 个流程节点 × 测试文件数。红框=未覆盖，浅灰=薄弱（1 文件），深灰=密集（6+ 文件）
 
 ### 3.3 各测试文件覆盖详情
 
@@ -766,9 +765,8 @@
 
 ### 依赖分层图
 
-![Figure 1](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-01-arch-layers.png)
 
-> **Figure 1**: 包依赖分层图 — 自底向上 9 层，vault 为中枢（7 包依赖），growth 为次中枢（5 包依赖）
+**[图说] Figure 1**: 包依赖分层图 — 自底向上 9 层，vault 为中枢（7 包依赖），growth 为次中枢（5 包依赖）
 
 ### 核心抽象与协议
 
@@ -805,17 +803,15 @@
 
 入口：`PipelineExecutor.run()` — `mortis/pipeline/executor.py:43`
 
-![Figure 2](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-02-pipeline-flow.png)
 
-> **Figure 2**: 主循环调用链 — TaskRouter 路由后分 simple/delegated 两路径，ActStep 含工具调用循环
+**[图说] Figure 2**: 主循环调用链 — TaskRouter 路由后分 simple/delegated 两路径，ActStep 含工具调用循环
 
 ### Dream 流水线
 
 `DreamPipeline.run()` 按 `PHASES_BY_LEVEL` 顺序反射调用各 `phase_<name>()`。Light=4 phase / Medium=5 phase（+SIMULATE）/ Deep=7 phase（+ERODE+SEED_CHECK）。
 
-![Figure 3](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-03-dream-pipeline.png)
 
-> **Figure 3**: Dream 流水线 — Light 4 phase / Medium 5 phase / Deep 7 phase
+**[图说] Figure 3**: Dream 流水线 — Light 4 phase / Medium 5 phase / Deep 7 phase
 
 ### Growth 注入链路
 
@@ -894,9 +890,8 @@ Mortis 的"信号"是认知状态的可量化表达 — 从 session 情绪到 gr
 
 ### 信号流主链
 
-![Figure 4](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-04-signal-flow.png)
 
-> **Figure 4**: 信号流主链 — session→emotion→growth→steiner→drift 完整闭环
+**[图说] Figure 4**: 信号流主链 — session→emotion→growth→steiner→drift 完整闭环
 
 ### confidence 生命周期
 
@@ -917,9 +912,8 @@ Vault 安全纵深防御、Redact 覆盖矩阵、漏洞清单与 Provider 隔离
 
 ### Vault 安全层级（纵深防御）
 
-![Figure 5](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-05-vault-defense.png)
 
-> **Figure 5**: Vault 4 层纵深防御 + Redact 脱敏层 — 任一层失败即拦截
+**[图说] Figure 5**: Vault 4 层纵深防御 + Redact 脱敏层 — 任一层失败即拦截
 
 ### Redact 覆盖矩阵
 
@@ -1009,25 +1003,22 @@ Vault 安全纵深防御、Redact 覆盖矩阵、漏洞清单与 Provider 隔离
 python -m mortis delegate "帮我整理本周的 growth 并总结 identity 维度的变化" --provider auto
 ```
 
-![Figure 6](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-06-task-flow.png)
 
-> **Figure 6**: 复杂任务委派完整信息流转 — 从 owner 输入到 growth 落地
+**[图说] Figure 6**: 复杂任务委派完整信息流转 — 从 owner 输入到 growth 落地
 
 ### 场景: 夜间 Dream 周期
 
 clock 进入 DREAM_LIGHT (23:00-06:00) → `LightDreamer.run()`
 
-![Figure 7](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-07-dream-cycle.png)
 
-> **Figure 7**: Dream 周期信息流 — 4 phase 从 session 到 growth 到 conflict
+**[图说] Figure 7**: Dream 周期信息流 — 4 phase 从 session 到 growth 到 conflict
 
 ### 场景: Steiner 隐藏层触发
 
 owner 手动编辑 growth 文件 → GrowthWatcher 检测 → unease 注入
 
-![Figure 8](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-08-steiner-hidden.png)
 
-> **Figure 8**: Steiner 隐藏层触发链 — owner 编辑→unease→潜台词注入→drift 通知
+**[图说] Figure 8**: Steiner 隐藏层触发链 — owner 编辑→unease→潜台词注入→drift 通知
 
 ---
 
@@ -1056,9 +1047,8 @@ owner 手动编辑 growth 文件 → GrowthWatcher 检测 → unease 注入
 | B13 | `fix/88-unify-toolresult` | B27 | `fix/52-web-ui` |
 | B14 | `fix/87-provider-audit-log` | | |
 
-![Figure 10](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-10-timeline.png)
 
-> **Figure 10**: 分支与 Issue 提交时间轴 — 5 天 60+ 提交 88 issues 全部关闭（左侧 B1-B27 标记对应上表分支名）
+**[图说] Figure 10**: 分支与 Issue 提交时间轴 — 5 天 60+ 提交 88 issues 全部关闭（左侧 B1-B27 标记对应上表分支名）
 
 ### 时间轴详情（按日期分组）
 

@@ -278,7 +278,8 @@ RFC-001 的 9 个模块都已实现并通过测试，但它们 **还没有接入
 - [RFC-001: 认知生长系统](docs/rfc/RFC-001-cognitive-growth.md) — 三态意识 + 梦境分级 + Reading Steiner 完整设计
 - [RFC-001 分解计划](docs/rfc/RFC-001-decomposition.md) — 9 个 issue 的依赖关系和工作量估算
 - [RFC-001 开放问题裁剪](docs/rfc/RFC-001-open-questions-decision.md) — 7 个开放问题的 owner 决策
-- [Mortis v3 方法级代码审计报告](docs/mortis-audit-v3/mortis-audit-v3.md) — 架构分析 / 调用链追踪 / 信号结构 / 安全审计 / 信息流转模拟（含 Mermaid 架构图）
+- [Mortis v3 方法级代码审计报告（图文版）](docs/mortis-audit-v3/mortis-audit-v3.md) — 人类阅读，含 10 张白底黑字架构图
+- [Mortis v3 方法级代码审计报告（Agent 版）](docs/mortis-audit-v3/mortis-audit-v3-agent.md) — AI Agent 阅读，纯文本结构化，无图片
 
 ## 我从来没有觉得烧Token开心过
 
@@ -286,9 +287,12 @@ RFC-001 的 9 个模块都已实现并通过测试，但它们 **还没有接入
 
 ## 审计
 
-Mortis 经过多轮独立代码审计，最新 v3 审计报告覆盖方法级调用链分析、信号结构梳理、架构剖析、安全审计与信息流转模拟：
+Mortis 经过多轮独立代码审计，最新 v3 审计报告覆盖方法级调用链分析、信号结构梳理、架构剖析、安全审计与信息流转模拟。报告提供两个版本，按读者类型选择：
 
-→ **[查看 v3 审计报告](docs/mortis-audit-v3/mortis-audit-v3.md)**（Markdown 格式，含 Mermaid 架构图 + 调用链 + 安全矩阵）
+| 读者 | 文件 | 说明 |
+|------|------|------|
+| **人类** | → [图文版](docs/mortis-audit-v3/mortis-audit-v3.md) | 含 10 张白底黑字架构图 + 调用链 + 安全矩阵 |
+| **AI Agent** | → [Agent 版](docs/mortis-audit-v3/mortis-audit-v3-agent.md) | 纯文本结构化，无图片引用，便于解析 |
 
 **审计修复摘要**：
 - 2 个 CRITICAL 数据泄漏漏洞（已修复 + 16 条回归测试）
