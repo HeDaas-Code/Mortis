@@ -65,19 +65,7 @@
 
 ### 2.2 Provider 配置链路
 
-```
-MINIMAX_API_KEY 环境变量
-    ↓
-make_provider("auto")
-    ↓ (检测到 MINIMAX_API_KEY)
-MinimaxProvider(timeout=60.0)
-    ↓
-MasterRuntime(provider=provider)
-    ↓
-RuntimeContext.provider
-    ↓
-PipelineExecutor / ToolAgent / Dreamer / Reflector 共用
-```
+`MINIMAX_API_KEY` 环境变量 → `make_provider("auto")` 检测到 key → 构造 `MinimaxProvider(timeout=60.0)` → 注入 `MasterRuntime(provider)` → 经 `RuntimeContext.provider` 被 PipelineExecutor / ToolAgent / Dreamer / Reflector 共用。
 
 ### 2.3 实验步骤分类
 
@@ -136,47 +124,12 @@ PipelineExecutor / ToolAgent / Dreamer / Reflector 共用
 
 > **Figure 1**: Pipeline 主循环调用链 — Think→Plan→Act→Review 4 步 + TaskRouter 路由判断
 
-**完整调用链**:
-
-```
-PipelineExecutor.run() [executor.py:43]
-  ├─ TaskRouter(ctx).route() [router.py:25]
-  │    └─ provider.generate(messages) [router.py:41] ← LLM 调用点 #0（路由决策）
-  │       prompt: "simple: <理由>" 或 "complex: <理由>"
-  │
-  ├─ [直接执行分支] executor.py:64-103
-  │    ├─ ThinkStep.run() [step.py:144]
-  │    │    └─ _call_provider(messages) [step.py:83]
-  │    │         └─ ctx.provider.generate(messages) [step.py:89] ← LLM 调用点 #1
-  │    │            prompt: "分析任务...需要查 vault 吗？需要派 sub 吗？"
-  │    │
-  │    ├─ PlanStep.run() [step.py:178]
-  │    │    └─ _call_provider(messages) [step.py:83]
-  │    │         └─ ctx.provider.generate(messages) [step.py:89] ← LLM 调用点 #2
-  │    │            prompt: "拆解为不超过 5 步骤的编号列表"
-  │    │
-  │    ├─ ActStep.run() [step.py:212]
-  │    │    └─ while _iteration < MAX_ITERATIONS(5):
-  │    │         └─ _call_provider(messages, tools) [step.py:221]
-  │    │              ├─ ctx.provider.generate(messages) [step.py:89] ← LLM 调用点 #3
-  │    │              ├─ parse_tool_calls_from_text(resp) [step.py:96] (TextCall 降级)
-  │    │              └─ tools.execute(tc.name, tc.arguments) [step.py:100]
-  │    │                  └─ ToolRegistry.execute → ToolAgent.execute
-  │    │
-  │    └─ ReviewStep.run() [step.py:254]
-  │         └─ _call_provider(messages) [step.py:83]
-  │              └─ ctx.provider.generate(messages) [step.py:89] ← LLM 调用点 #4
-  │                 prompt: "审阅产出...采纳/丢弃/需要修改？"
-  │                 决策: 含 adopt/采纳/ok/yes/done → done
-  │
-  └─ [委派分支] _run_delegated() [executor.py:119]
-       ├─ ThinkStep.run() ← LLM #1
-       ├─ ActStep.run() ← LLM #3
-       ├─ vault.write_sub_output(sub_id, output) [executor.py:187] [VAULT-WRITE]
-       ├─ ReviewGate.review(content, rel_path) [review.py:39]
-       └─ ReviewGate.apply(..., vault_whitelist=SUB_VAULT_WHITELIST) [executor.py:200]
-            └─ _safe_write(target, content) [review.py:155] [VAULT-WRITE]
-```
+**调用链要点**:
+- `PipelineExecutor.run()` [executor.py:43] → `TaskRouter.route()` [router.py:25] ★LLM#0 路由决策（输出 `simple:` / `complex:`）
+- 直接执行分支 [executor.py:64-103]：`ThinkStep` [step.py:144] ★LLM#1 → `PlanStep` [step.py:178] ★LLM#2 → `ActStep` [step.py:212] ★LLM#3（工具循环 MAX_ITERATIONS=5）→ `ReviewStep` [step.py:254] ★LLM#4
+- ActStep 内部：`_call_provider(messages, tools)` → `parse_tool_calls_from_text(resp)` → `tools.execute(tc.name, tc.arguments)` → `ToolRegistry.execute` → `ToolAgent.execute`
+- ReviewStep 决策：含 adopt/采纳/ok/yes/done → done
+- 委派分支 `_run_delegated()` [executor.py:119]：`ThinkStep` ← LLM#1 → `ActStep` ← LLM#3 → `vault.write_sub_output(sub_id, output)` [VAULT-WRITE] → `ReviewGate.review()` [review.py:39] → `ReviewGate.apply(..., vault_whitelist=SUB_VAULT_WHITELIST)` [executor.py:200] → `_safe_write(target, content)` [review.py:155] [VAULT-WRITE]
 
 **E2E 验证**:
 - E2E-04: 简单任务，Think→Plan→Act→Review 4 步全跑，4 次 LLM 调用，9.83s
@@ -190,39 +143,17 @@ PipelineExecutor.run() [executor.py:43]
 > **Figure 2**: ToolAgent 调用链 — VaultRead/Search/Stats 三个 LLM 调用点 + redact 覆盖
 
 **VaultReadAgent 调用链** (E2E-06):
-```
-VaultReadAgent.execute(input) [vault_read.py:57]
-  ├─ normalize_rel_path(rel_path) [vault_read.py:68] (路径归一化)
-  ├─ blocked_prefixes 检查 [vault_read.py:71-76] (issue #38/#80)
-  ├─ vault.read(rel_path) [vault_read.py:85]
-  ├─ parse_obsidian(content) [vault_read.py:97] (可选双链解析)
-  └─ _summarize(content, max_length) [vault_read.py:110]
-       ├─ _redact_snippet(content[:2000]) [vault_read.py:129] ← REDACT 点
-       └─ provider.generate_text(prompt, system) [vault_read.py:146] ← LLM 调用点 #4
-```
+- `VaultReadAgent.execute(input)` [vault_read.py:57] → `normalize_rel_path(rel_path)` [vault_read.py:68] 路径归一化 → `blocked_prefixes` 检查 [vault_read.py:71-76] (issue #38/#80) → `vault.read(rel_path)` [vault_read.py:85] → `parse_obsidian(content)` [vault_read.py:97] 可选双链解析 → `_summarize(content, max_length)` [vault_read.py:110]
+- `_summarize` 内部：`_redact_snippet(content[:2000])` [vault_read.py:129] ← REDACT 点 → `provider.generate_text(prompt, system)` [vault_read.py:146] ← LLM 调用点 #4
 
 **VaultSearchAgent 调用链** (E2E-07):
-```
-VaultSearchAgent.execute(input) [vault_search.py:65]
-  ├─ vault.list_growths_by_tag(t) / list_growths() [vault_search.py:79-85] (粗筛)
-  ├─ 全文过滤 [vault_search.py:88-128]
-  │    └─ _snippet(body, q, redact=True) [vault_search.py:302]
-  │         └─ _redact_snippet(raw) [vault_search.py:317] ← REDACT 点
-  ├─ _semantic_rerank(matches, query) [vault_search.py:151]
-  │    ├─ _redact_snippet(m['snippet']) [vault_search.py:170] ← REDACT 点
-  │    └─ provider.generate_text(prompt, system) [vault_search.py:196] ← LLM 调用点 #5
-  └─ _bfs_links(seeds, max_depth) [vault_search.py:244] (双链图 BFS)
-```
+- `VaultSearchAgent.execute(input)` [vault_search.py:65] → `vault.list_growths_by_tag(t)` / `list_growths()` [vault_search.py:79-85] 粗筛 → 全文过滤 [vault_search.py:88-128]
+- 全文过滤：`_snippet(body, q, redact=True)` [vault_search.py:302] → `_redact_snippet(raw)` [vault_search.py:317] ← REDACT 点
+- `_semantic_rerank(matches, query)` [vault_search.py:151] → `_redact_snippet(m['snippet'])` [vault_search.py:170] ← REDACT 点 → `provider.generate_text(prompt, system)` [vault_search.py:196] ← LLM 调用点 #5
+- `_bfs_links(seeds, max_depth)` [vault_search.py:244] 双链图 BFS
 
 **VaultStatsAgent 调用链** (E2E-08):
-```
-VaultStatsAgent.execute(input) [vault_stats.py:39]
-  ├─ vault.list_growths() [vault_stats.py:43]
-  ├─ 逐个 read_growth → 统计 by_dimension + histogram
-  └─ _analyze_stats(total, by_dimension, histogram) [vault_stats.py:82]
-       └─ provider.generate_text(prompt, system) [vault_stats.py:132] ← LLM 调用点 #6
-          (无 redact — 仅传聚合数字)
-```
+- `VaultStatsAgent.execute(input)` [vault_stats.py:39] → `vault.list_growths()` [vault_stats.py:43] → 逐个 `read_growth` 统计 by_dimension + histogram → `_analyze_stats(total, by_dimension, histogram)` [vault_stats.py:82] → `provider.generate_text(prompt, system)` [vault_stats.py:132] ← LLM 调用点 #6（无 redact — 仅传聚合数字）
 
 ### 4.3 Reflect 调用链（E2E-11/25）
 
@@ -230,25 +161,14 @@ VaultStatsAgent.execute(input) [vault_stats.py:39]
 
 > **Figure 3**: Reflect 调用链 — session 加载 → LLM 反思 → emotion 打分 → vault 写入
 
-**完整调用链**:
-```
-ReflectExecutor.run(session_paths, sessions_dir) [executor.py:138]
-  ├─ _load_sessions(session_paths, sessions_dir) [executor.py:153]
-  │    └─ Session.load(parent, sid) [executor.py:205]
-  ├─ _summarize_sessions(sessions) [executor.py:154]
-  │    └─ 拼成 "[session #i] id=...\nthreads=..." 文本
-  ├─ _generate_reflection(sessions_text) [executor.py:156]
-  │    └─ provider.generate_text(prompt) [executor.py:231] ← LLM 调用点 #8
-  │       prompt: _REFLECT_PROMPT (80~150 字第一人称中文反思)
-  ├─ score_emotion(provider, cache_key, sessions_text) [executor.py:159]
-  │    ├─ redact_snippet(text) [emotion.py:90] ← REDACT 点
-  │    ├─ provider.generate_text(prompt) [emotion.py:92] ← LLM 调用点 #8b (emotion)
-  │    └─ _parse_emotion_response(raw) [emotion.py:104]
-  │       返回 (valence, arousal)
-  ├─ _next_reflection_id() [executor.py:161] → "reflect-YYYY-MM-DD-NNN"
-  └─ vault.write(rel, content, whitelist=None) [executor.py:175] [VAULT-WRITE]
-     路径: mortis-subconscious/pending-reflections/<rid>.md
-```
+**调用链要点**:
+- `ReflectExecutor.run(session_paths, sessions_dir)` [executor.py:138]
+- `_load_sessions(session_paths, sessions_dir)` [executor.py:153] → `Session.load(parent, sid)` [executor.py:205]
+- `_summarize_sessions(sessions)` [executor.py:154] → 拼成 `[session #i] id=...\nthreads=...` 文本
+- `_generate_reflection(sessions_text)` [executor.py:156] → `provider.generate_text(prompt)` [executor.py:231] ← LLM 调用点 #8（prompt: `_REFLECT_PROMPT`，80~150 字第一人称中文反思）
+- `score_emotion(provider, cache_key, sessions_text)` [executor.py:159] → `redact_snippet(text)` [emotion.py:90] ← REDACT 点 → `provider.generate_text(prompt)` [emotion.py:92] ← LLM 调用点 #8b (emotion) → `_parse_emotion_response(raw)` [emotion.py:104] 返回 (valence, arousal)
+- `_next_reflection_id()` [executor.py:161] → `reflect-YYYY-MM-DD-NNN`
+- `vault.write(rel, content, whitelist=None)` [executor.py:175] [VAULT-WRITE]，路径 `mortis-subconscious/pending-reflections/<rid>.md`
 
 ### 4.4 Dream 流水线调用链（E2E-12/13/14）
 
@@ -257,50 +177,17 @@ ReflectExecutor.run(session_paths, sessions_dir) [executor.py:138]
 > **Figure 4**: Dream 流水线调用链 — Light 4 phase / Medium 5 phase / Deep 7 phase
 
 **LightDreamer 4 phase** (E2E-12):
-```
-LightDreamer.run() [pipeline.py:54]
-  ├─ phase_recall() [light.py:103]
-  │    ├─ _load_recent_sessions() [light.py:147] (扫 sessions/<date>/*.json)
-  │    └─ score_emotion(provider, path, text) [emotion.py:62] ← LLM 调用 #9a (每条 session)
-  │       └─ emotion_weighted_sample(items, k, rng) [recall.py:38]
-  │
-  ├─ phase_associate() [light.py:196]
-  │    └─ associate(provider, recall_texts) [associate.py:83]
-  │         ├─ redact_snippet(t) [associate.py:104] ← REDACT 点
-  │         └─ provider.generate_text(prompt) [associate.py:110] ← LLM 调用 #9b
-  │
-  ├─ phase_crystallize() [light.py:219]
-  │    ├─ infer_dimension(body) [crystallize.py:71]
-  │    ├─ average_emotion(weights) [crystallize.py:138]
-  │    ├─ make_candidate(...) [crystallize.py:93] (confidence=0.3, dream_level=LIGHT)
-  │    └─ vault.write_growth(candidate) [light.py:252] [VAULT-WRITE] [SIGNAL-growth]
-  │
-  └─ phase_reconcile() [light.py:268]
-       ├─ _detect_conflicts(candidate, existing) [light.py:314]
-       └─ _write_conflict(c) [light.py:365] [VAULT-WRITE]
-          路径: mortis-subconscious/conflicts/<candidate_id>.md
-```
+- `LightDreamer.run()` [pipeline.py:54]
+- `phase_recall()` [light.py:103]：`_load_recent_sessions()` [light.py:147] 扫 `sessions/<date>/*.json` → `score_emotion(provider, path, text)` [emotion.py:62] ← LLM 调用 #9a（每条 session）→ `emotion_weighted_sample(items, k, rng)` [recall.py:38]
+- `phase_associate()` [light.py:196]：`associate(provider, recall_texts)` [associate.py:83] → `redact_snippet(t)` [associate.py:104] ← REDACT 点 → `provider.generate_text(prompt)` [associate.py:110] ← LLM 调用 #9b
+- `phase_crystallize()` [light.py:219]：`infer_dimension(body)` [crystallize.py:71] → `average_emotion(weights)` [crystallize.py:138] → `make_candidate(...)` [crystallize.py:93] (confidence=0.3, dream_level=LIGHT) → `vault.write_growth(candidate)` [light.py:252] [VAULT-WRITE] [SIGNAL-growth]
+- `phase_reconcile()` [light.py:268]：`_detect_conflicts(candidate, existing)` [light.py:314] → `_write_conflict(c)` [light.py:365] [VAULT-WRITE]，路径 `mortis-subconscious/conflicts/<candidate_id>.md`
 
 **MediumDreamer 5 phase** (E2E-13): Light + SIMULATE phase（启发式，无 LLM）
 
 **DeepDreamer 7 phase** (E2E-14): Medium + RECONCILE + ERODE + SEED_CHECK
-```
-DeepDreamer 额外 phase:
-  ├─ phase_erode() [deep.py:223]
-  │    ├─ erode_growths(all_growths) [erode.py:67] (按 last_validated 距今天数衰减)
-  │    ├─ vault.write_growth(g) [deep.py:236] [VAULT-WRITE] (survived 重写)
-  │    └─ vault.archive_growth(dim, id) [deep.py:244] (os.rename 原子归档)
-  │
-  └─ phase_seed_check() [deep.py:264]
-       ├─ 重读 active growths 拼 summary
-       ├─ seed_check(seed, growth_summary, provider, vault) [seed_check.py:137]
-       │    ├─ redact_snippet(safe_summary) [seed_check.py:170] ← REDACT 点
-       │    └─ provider.generate_text(prompt) [seed_check.py:177] ← LLM 调用 #7
-       │       返回 DriftReport(per_dimension, total_drift, needs_owner_notify)
-       ├─ log_drift(vault, ...) [seed_check.py:198] [VAULT-WRITE]
-       │    路径: mortis-subconscious/drift-log.json
-       └─ [若 needs_owner_notify] vault.write("mortis-subconscious/owner-notify.json") [deep.py:311]
-```
+- `phase_erode()` [deep.py:223]：`erode_growths(all_growths)` [erode.py:67] 按 `last_validated` 距今天数衰减 → survived `vault.write_growth(g)` [deep.py:236] [VAULT-WRITE] 重写 → expired `vault.archive_growth(dim, id)` [deep.py:244] (`os.rename` 原子归档)
+- `phase_seed_check()` [deep.py:264]：重读 active growths 拼 summary → `seed_check(seed, growth_summary, provider, vault)` [seed_check.py:137] → `redact_snippet(safe_summary)` [seed_check.py:170] ← REDACT 点 → `provider.generate_text(prompt)` [seed_check.py:177] ← LLM 调用 #7，返回 `DriftReport(per_dimension, total_drift, needs_owner_notify)` → `log_drift(vault, ...)` [seed_check.py:198] [VAULT-WRITE] 路径 `mortis-subconscious/drift-log.json` → 若 needs_owner_notify 则 `vault.write("mortis-subconscious/owner-notify.json")` [deep.py:311]
 
 ---
 
@@ -316,52 +203,24 @@ DeepDreamer 额外 phase:
 
 **信息流转路径**:
 
-```
-[1] AWAKE 阶段 (10 次 LLM 中的 4 次)
-    owner 输入 "总结你今天学到了什么"
-        ↓
-    MasterRuntime.create_thread(task) [master.py:49]
-        ↓ 写入 mortis-journal/sessions/<date>/<thread_id>.json
-    RuntimeContext.make_context(thread, tools)
-        ↓ 注入 system prompt:
-        │   system[0] = seed.get_dimension("tone") (人格语气)
-        │   system[1] = unease_prompt_for_injection() (潜台词，若有)
-        │   system[2] = growth_context_for_task(task) (相关 growth，已 redact)
-        ↓
-    PipelineExecutor.run()
-        ├─ ThinkStep → LLM (分析任务)
-        ├─ PlanStep → LLM (拆解步骤)
-        ├─ ActStep → LLM (执行任务，可能调工具)
-        └─ ReviewStep → LLM (审阅产出)
-        ↓
-    thread.complete(output) → _save_thread()
-        ↓ 写入 mortis-journal/sessions/<date>/<thread_id>.json (更新)
+**[1] AWAKE 阶段** (10 次 LLM 中的 4 次)
+- owner 输入"总结你今天学到了什么" → `MasterRuntime.create_thread(task)` [master.py:49] → 写入 `mortis-journal/sessions/<date>/<thread_id>.json`
+- `RuntimeContext.make_context(thread, tools)` 注入 system prompt：`system[0]` = `seed.get_dimension("tone")` 人格语气；`system[1]` = `unease_prompt_for_injection()` 潜台词（若有）；`system[2]` = `growth_context_for_task(task)` 相关 growth（已 redact）
+- `PipelineExecutor.run()`：`ThinkStep` → LLM 分析任务 → `PlanStep` → LLM 拆解步骤 → `ActStep` → LLM 执行任务（可能调工具）→ `ReviewStep` → LLM 审阅产出
+- `thread.complete(output)` → `_save_thread()` → 更新 `mortis-journal/sessions/<date>/<thread_id>.json`
 
-[2] REFLECT 阶段 (2 次 LLM)
-    ReflectExecutor.run(session_paths, sessions_dir)
-        ↓ 读取 mortis-journal/sessions/<date>/<sid>.json
-        ↓ _summarize_sessions() 拼文本
-        ↓
-    _generate_reflection(sessions_text)
-        ↓ LLM 调用 → 生成 80~150 字反思 body
-        ↓
-    score_emotion(provider, cache_key, text)
-        ├─ redact_snippet(text) (脱敏)
-        └─ LLM 调用 → 返回 (valence, arousal)
-        ↓
-    vault.write(rel, content, whitelist=None)
-        ↓ 写入 mortis-subconscious/pending-reflections/<rid>.md
+**[2] REFLECT 阶段** (2 次 LLM)
+- `ReflectExecutor.run(session_paths, sessions_dir)` 读取 `mortis-journal/sessions/<date>/<sid>.json` → `_summarize_sessions()` 拼文本
+- `_generate_reflection(sessions_text)` → LLM 调用 → 生成 80~150 字反思 body
+- `score_emotion(provider, cache_key, text)`：`redact_snippet(text)` 脱敏 → LLM 调用 → 返回 (valence, arousal)
+- `vault.write(rel, content, whitelist=None)` → 写入 `mortis-subconscious/pending-reflections/<rid>.md`
 
-[3] DREAM_LIGHT 阶段 (4 次 LLM)
-    LightDreamer.run()
-        ├─ RECALL: 扫 sessions/ → score_emotion 每条 → emotion_weighted_sample
-        ├─ ASSOCIATE: redact 每条 → LLM 联想 → 解析 {body, tags}
-        ├─ CRYSTALLIZE: infer_dimension → make_candidate → vault.write_growth
-        │    ↓ 写入 mortis-growth/<dim>/<id>.md [SIGNAL-growth]
-        │    ↓ 触发 GrowthWatcher._on_edit(dim) → accumulate unease → save_unease
-        └─ RECONCILE: 检测冲突 → _write_conflict
-             ↓ 写入 mortis-subconscious/conflicts/<id>.md
-```
+**[3] DREAM_LIGHT 阶段** (4 次 LLM)
+- `LightDreamer.run()`：
+  - RECALL：扫 `sessions/` → `score_emotion` 每条 → `emotion_weighted_sample`
+  - ASSOCIATE：`redact` 每条 → LLM 联想 → 解析 `{body, tags}`
+  - CRYSTALLIZE：`infer_dimension` → `make_candidate` → `vault.write_growth` → 写入 `mortis-growth/<dim>/<id>.md` [SIGNAL-growth] → 触发 `GrowthWatcher._on_edit(dim)` → accumulate unease → `save_unease`
+  - RECONCILE：检测冲突 → `_write_conflict` → 写入 `mortis-subconscious/conflicts/<id>.md`
 
 ### 5.2 信号产生与传播
 
@@ -399,17 +258,7 @@ DeepDreamer 额外 phase:
 
 ### 写入安全检查链
 
-```
-Vault.write(rel_path, content, whitelist) [local.py:98]
-  ├─ _enforce(rel_path, whitelist, op) [local.py:69]
-  │    └─ whitelist is None? → 直接通过
-  │       非 None? → VaultSecurity.check_whitelist [base.py:92]
-  │                   失败 → 抛 VaultAccessDenied
-  ├─ _safe_path(rel_path) [local.py:51]
-  │    ├─ 拒绝绝对路径
-  │    └─ resolve 后 relative_to(self.root) 检查防路径遍历
-  └─ mkdir parents=True + p.write_text(content)
-```
+`Vault.write(rel_path, content, whitelist)` [local.py:98] 的安全检查顺序：先 `_enforce(rel_path, whitelist, op)` [local.py:69]（whitelist 为 None 则直接通过；非 None 则 `VaultSecurity.check_whitelist` [base.py:92]，失败抛 `VaultAccessDenied`），再 `_safe_path(rel_path)` [local.py:51]（拒绝绝对路径 + `resolve` 后 `relative_to(self.root)` 检查防路径遍历），最后 `mkdir parents=True` + `p.write_text(content)`。
 
 ---
 
