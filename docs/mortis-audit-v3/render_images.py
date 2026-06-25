@@ -879,60 +879,62 @@ def render_10_timeline():
 # E2E Figure 1: Pipeline 主循环调用链
 # ============================================================
 def render_e2e_01_pipeline_chain():
-    fig, ax = _setup_ax((16, 11))
+    fig, ax = _setup_ax((18, 13))
     ax.set_title("E2E Figure 1 · Pipeline 主循环调用链 — Think→Plan→Act→Review + TaskRouter",
                  fontsize=14, weight="bold", pad=20)
 
-    # 入口
+    # ---- 入口行 (y=90) ----
     _box(ax, 5, 88, 22, 8, "PipelineExecutor.run()\nexecutor.py:43", fontsize=8, weight="bold")
     _box(ax, 35, 88, 28, 8, "TaskRouter.route()\nrouter.py:25\n★LLM#0 路由决策", fontsize=8)
     _arrow(ax, 27, 92, 35, 92)
 
-    # 路由分叉
+    # ---- 路由分叉 (y=72) ----
     _box(ax, 5, 70, 22, 8, "simple 路径\n直接执行\nexecutor.py:64-103", fontsize=8)
     _box(ax, 35, 70, 28, 8, "delegated 路径\n派 sub\nexecutor.py:119", fontsize=8)
     _arrow(ax, 14, 88, 14, 78, "simple")
     _arrow(ax, 49, 88, 49, 78, "delegated")
 
-    # 4 步 Step
+    # ---- 委派分支 (右侧, x=82) ----
+    _box(ax, 82, 70, 16, 8, "vault.write_sub_output()\nexecutor.py:187\n[VAULT-WRITE]", fontsize=7)
+    _box(ax, 82, 56, 16, 8, "ReviewGate.review()\nreview.py:39", fontsize=7)
+    _box(ax, 82, 42, 16, 8, "ReviewGate.apply()\nreview.py:155\n_safe_write [VAULT-WRITE]", fontsize=7)
+    _arrow(ax, 63, 74, 82, 74)
+    _arrow(ax, 90, 70, 90, 64)
+    _arrow(ax, 90, 56, 90, 50)
+
+    # ---- 4 步 Step (y=50, width=18, gap=2) ----
     steps = [
-        ("ThinkStep.run()\nstep.py:144\n★LLM#1\nprompt: 分析任务\n需要查 vault? 派 sub?", 3, 52),
-        ("PlanStep.run()\nstep.py:178\n★LLM#2\nprompt: 拆解为\n不超过 5 步骤", 25, 52),
-        ("ActStep.run()\nstep.py:212\n★LLM#3\n工具调用循环\nMAX_ITERATIONS=5", 47, 52),
-        ("ReviewStep.run()\nstep.py:254\n★LLM#4\nprompt: 审阅产出\nadopt/discard", 69, 52),
+        ("ThinkStep.run()\nstep.py:144\n★LLM#1\nprompt: 分析任务\n需要查 vault? 派 sub?", 2, 50),
+        ("PlanStep.run()\nstep.py:178\n★LLM#2\nprompt: 拆解为\n不超过 5 步骤", 22, 50),
+        ("ActStep.run()\nstep.py:212\n★LLM#3\n工具调用循环\nMAX_ITERATIONS=5", 42, 50),
+        ("ReviewStep.run()\nstep.py:254\n★LLM#4\nprompt: 审阅产出\nadopt/discard", 62, 50),
     ]
     for text, x, y in steps:
-        _box(ax, x, y, 21, 14, text, fontsize=7)
+        _box(ax, x, y, 18, 14, text, fontsize=7)
     for i in range(3):
-        _arrow(ax, 24 + i * 22, 59, 25 + i * 22, 59)
+        _arrow(ax, 20 + i * 20, 57, 22 + i * 20, 57)
 
-    # ActStep 内部
-    _box(ax, 47, 36, 21, 12, "while iter < 5:\n  _call_provider(msgs, tools)\n  parse_tool_calls_from_text\n  tools.execute(tc.name, args)", fontsize=7)
-    _arrow(ax, 57, 52, 57, 48, "展开")
+    # simple 路径 → ThinkStep (补上缺失的箭头)
+    _arrow(ax, 14, 70, 11, 64)
 
-    # 工具执行
-    _box(ax, 30, 22, 20, 8, "ToolRegistry.execute()\nregistry.py:34", fontsize=7)
-    _box(ax, 55, 22, 22, 8, "ToolAgent.execute()\n5 内置 Agent\n(vault_read/search/stats)", fontsize=7)
-    _arrow(ax, 53, 36, 40, 30)
-    _arrow(ax, 62, 36, 66, 30)
+    # ---- ActStep 内部展开 (y=30) ----
+    _box(ax, 42, 30, 18, 12, "while iter < 5:\n_call_provider(msgs, tools)\nparse_tool_calls_from_text\ntools.execute(tc.name, args)", fontsize=7)
+    _arrow(ax, 51, 50, 51, 42, "展开")
 
-    # 委派分支
-    _box(ax, 75, 70, 22, 8, "vault.write_sub_output()\nexecutor.py:187\n[VAULT-WRITE]", fontsize=7)
-    _box(ax, 75, 56, 22, 8, "ReviewGate.review()\nreview.py:39", fontsize=7)
-    _box(ax, 75, 42, 22, 8, "ReviewGate.apply()\nreview.py:155\n_safe_write [VAULT-WRITE]", fontsize=7)
-    _arrow(ax, 49, 70, 75, 74)
-    _arrow(ax, 86, 70, 86, 64)
-    _arrow(ax, 86, 56, 86, 50)
+    # ---- 工具执行 (y=12) ----
+    _box(ax, 24, 12, 18, 8, "ToolRegistry.execute()\nregistry.py:34", fontsize=7)
+    _box(ax, 44, 12, 18, 8, "ToolAgent.execute()\n5 内置 Agent\n(vault_read/search/stats)", fontsize=7)
+    _arrow(ax, 48, 30, 36, 20)
+    _arrow(ax, 56, 30, 50, 20)
 
-    # E2E 验证标记
-    _box(ax, 3, 22, 22, 8, "E2E-04 简单任务\n4 次 LLM, 9.83s\n✓ PASS", fontsize=7, fc="#F8F8F8")
-    _box(ax, 3, 10, 22, 8, "E2E-05 工具调用\n4 次 LLM, 17.79s\n✓ PASS", fontsize=7, fc="#F8F8F8")
-    _box(ax, 28, 10, 22, 8, "E2E-25 完整周期\n10 次 LLM, 75.47s\n✓ PASS", fontsize=7, fc="#F8F8F8")
-    _box(ax, 53, 10, 22, 8, "★LLM#N = LLM 调用点\n[VAULT-WRITE] = 写入", fontsize=7, fc="#F8F8F8")
-    _box(ax, 75, 22, 22, 8, "sub 产出写入\nmortis-journal/\nsub-outputs/", fontsize=7)
+    # ---- E2E 验证标记 (底部, y=2) ----
+    _box(ax, 2, 2, 20, 6, "E2E-04 简单任务\n4 LLM, 9.83s ✓", fontsize=6, fc="#F8F8F8")
+    _box(ax, 24, 2, 20, 6, "E2E-05 工具调用\n4 LLM, 17.79s ✓", fontsize=6, fc="#F8F8F8")
+    _box(ax, 48, 2, 20, 6, "E2E-25 完整周期\n10 LLM, 75.47s ✓", fontsize=6, fc="#F8F8F8")
+    _box(ax, 72, 2, 24, 6, "★LLM#N = LLM 调用点\n[VAULT-WRITE] = vault 写入", fontsize=6, fc="#F8F8F8")
 
-    ax.text(2, 2, "★LLM#N = LLM 调用点  [VAULT-WRITE] = vault 写入  → = 调用方向",
-            fontsize=7, color="#555555")
+    ax.text(2, 96.5, "→ 调用方向    ★LLM#N = LLM 调用点    [VAULT-WRITE] = vault 写入",
+            fontsize=7, color="#555555", va="top")
 
     plt.tight_layout()
     plt.savefig(os.path.join(OUT_DIR, "e2e-01-pipeline-chain.png"),
