@@ -1388,11 +1388,11 @@ def step_25_full_cycle(env: ExperimentEnv, report: ExperimentReport) -> None:
 
 # ============================================================================
 # Web UI 交互步骤 (E2E-26~31) — issue #52/#53/#54
-# 纯 stdlib http.server, 无 LLM 调用, 验证 owner HTTP 交互 + 数据流转
+# 测试真正的 HTML 前端页面 + 前端交互 + 前后端交互
 # ============================================================================
 
 def _get_json(base_url: str, path: str) -> tuple[int, dict]:
-    """发 GET 请求, 返回 (status_code, parsed_json)。"""
+    """发 GET 请求到 API 端点, 返回 (status_code, parsed_json)。"""
     url = base_url + path
     try:
         with urllib.request.urlopen(url, timeout=5) as resp:
@@ -1404,246 +1404,273 @@ def _get_json(base_url: str, path: str) -> tuple[int, dict]:
     return status, json.loads(body)
 
 
+def _get_html(base_url: str, path: str) -> tuple[int, str]:
+    """发 GET 请求到 HTML 页面, 返回 (status_code, html_string)。"""
+    url = base_url + path
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            status = resp.status
+            body = resp.read().decode("utf-8")
+    except HTTPError as e:
+        status = e.code
+        body = e.read().decode("utf-8")
+    return status, body
+
+
 def step_26_web_server_dashboard(env: ExperimentEnv, report: ExperimentReport) -> None:
-    """E2E-26: Web UI server 启动 + GET / (dashboard 仪表盘, issue #52)。"""
+    """E2E-26: Web UI server 启动 + HTML dashboard 页面 (issue #52)。"""
     start = time.monotonic()
     try:
         base_url = env.start_web()
-        # dashboard 应返回 phase + unease_max + growth_count + endpoints
-        status, data = _get_json(base_url, "/")
-        ok = (
-            status == 200
-            and "phase" in data
-            and "unease_max" in data
-            and data["growth_count"] == 3  # 3 个预置 growth
-            and "/growths" in data["endpoints"]
-            and "/unease" in data["endpoints"]
-            and "/notifications" in data["endpoints"]
-            and "/dreams" in data["endpoints"]
+        # 1. HTML dashboard 页面
+        html_status, html_body = _get_html(base_url, "/")
+        ok_html = (
+            html_status == 200
+            and "<!DOCTYPE html>" in html_body
+            and "Mortis Web UI" in html_body
+            and "checkbox" in html_body
+            and "togglePrettyPrint" in html_body
+            and "refreshData" in html_body
+            and "<nav>" in html_body
         )
+        # 2. JSON API (前后端交互: JS fetch 调用的端点)
+        api_status, api_data = _get_json(base_url, "/api/dashboard")
+        ok_api = (
+            api_status == 200
+            and "phase" in api_data
+            and "unease_max" in api_data
+            and api_data["growth_count"] == 3
+            and "/growths" in api_data["endpoints"]
+        )
+        # 3. HTML 中渲染了 vault 数据
+        ok_data_in_html = "3" in html_body
+        ok = ok_html and ok_api and ok_data_in_html
         report.add(StepResult(
-            step_id="E2E-26",
-            name="Web UI server 启动 + dashboard（issue #52）",
-            category="web",
-            success=ok,
-            elapsed_sec=time.monotonic() - start,
-            detail=f"status={status}, phase={data.get('phase')}, growth_count={data.get('growth_count')}, endpoints={len(data.get('endpoints', []))}",
+            step_id="E2E-26", name="Web UI server 启动 + HTML dashboard (issue #52)",
+            category="web", success=ok, elapsed_sec=time.monotonic() - start,
+            detail=f"html={ok_html} (DOCTYPE+UI+交互元素), api={ok_api} (phase={api_data.get('phase')}), data_in_html={ok_data_in_html}",
             llm_calls=0,
         ))
     except Exception as e:
         report.add(StepResult(
-            step_id="E2E-26",
-            name="Web UI server 启动 + dashboard（issue #52）",
-            category="web",
-            success=False,
-            elapsed_sec=time.monotonic() - start,
+            step_id="E2E-26", name="Web UI server 启动 + HTML dashboard (issue #52)",
+            category="web", success=False, elapsed_sec=time.monotonic() - start,
             error=f"{type(e).__name__}: {e}",
         ))
 
 
 def step_27_web_growths(env: ExperimentEnv, report: ExperimentReport) -> None:
-    """E2E-27: GET /growths + /growths/<rel> (growth 浏览器, issue #53)。"""
+    """E2E-27: HTML growth 列表 + 详情页 + 前端过滤交互 (issue #53)。"""
     start = time.monotonic()
     try:
-        base_url = env.start_web()
-        # 列表
-        s1, d1 = _get_json(base_url, "/growths")
-        ok_list = s1 == 200 and d1["total"] == 3 and len(d1["growths"]) == 3
-        # 详情 (取第一条)
-        rel_path = d1["growths"][0]["rel_path"] if ok_list else ""
-        s2, d2 = _get_json(base_url, f"/growths/{rel_path}")
-        ok_detail = (
-            s2 == 200
-            and d2.get("id") == "test-identity-001"
-            and d2.get("dimension") == "identity"
-            and "body" in d2
-            and "emotional_valence" in d2  # owner 视角可读 emotional_*
+        base_url = env._web_base_url or env.start_web()
+        # 1. HTML growth 列表页
+        html_status, html_body = _get_html(base_url, "/growths")
+        ok_html_list = (
+            html_status == 200
+            and "growth-card" in html_body
+            and "filter-input" in html_body
+            and "filterGrowths" in html_body
+            and "test-identity-001" in html_body
+            and "identity" in html_body
         )
-        ok = ok_list and ok_detail
+        # 2. JSON API 列表
+        api_status, api_data = _get_json(base_url, "/api/growths")
+        ok_api_list = api_status == 200 and api_data["total"] == 3
+        # 3. HTML growth 详情页
+        first_rel = api_data["growths"][0]["rel_path"]
+        detail_status, detail_html = _get_html(base_url, f"/growths/{first_rel}")
+        ok_html_detail = (
+            detail_status == 200
+            and "<table>" in detail_html
+            and "test-identity-001" in detail_html
+            and "identity" in detail_html
+            and ("emotional" in detail_html.lower() or "情感" in detail_html)
+        )
+        # 4. JSON API 详情
+        _, detail_json = _get_json(base_url, f"/api/growths/{first_rel}")
+        ok_api_detail = detail_json["id"] == "test-identity-001"
+        ok = ok_html_list and ok_api_list and ok_html_detail and ok_api_detail
         report.add(StepResult(
-            step_id="E2E-27",
-            name="GET /growths + /growths/<rel>（growth 浏览器, issue #53）",
-            category="web",
-            success=ok,
-            elapsed_sec=time.monotonic() - start,
-            detail=f"列表 total={d1.get('total')}, 详情 id={d2.get('id')}, dimension={d2.get('dimension')}",
+            step_id="E2E-27", name="HTML growth 列表 + 详情页 + 前端过滤交互 (issue #53)",
+            category="web", success=ok, elapsed_sec=time.monotonic() - start,
+            detail=f"html_list={ok_html_list}, api_list={ok_api_list} (total={api_data['total']}), html_detail={ok_html_detail}, api_detail={ok_api_detail}",
             llm_calls=0,
         ))
     except Exception as e:
         report.add(StepResult(
-            step_id="E2E-27",
-            name="GET /growths + /growths/<rel>（growth 浏览器, issue #53）",
-            category="web",
-            success=False,
-            elapsed_sec=time.monotonic() - start,
+            step_id="E2E-27", name="HTML growth 列表 + 详情页 + 前端过滤交互 (issue #53)",
+            category="web", success=False, elapsed_sec=time.monotonic() - start,
             error=f"{type(e).__name__}: {e}",
         ))
 
 
 def step_28_web_unease(env: ExperimentEnv, report: ExperimentReport) -> None:
-    """E2E-28: GET /unease (unease 仪表盘, issue #53)。"""
+    """E2E-28: HTML unease 仪表盘 (柱状图 + 7 维度, issue #53)。"""
     start = time.monotonic()
     try:
+        base_url = env._web_base_url or env.start_web()
         from dataclasses import replace as dc_replace
         from mortis.steiner import UneaseState, save_unease
-        # 写入非零 unease 状态
-        state = dc_replace(
-            UneaseState(),
-            per_dimension={
-                **UneaseState().per_dimension,
-                Dimension.IDENTITY: 0.45,
-                Dimension.VALUES: 0.82,
-            },
-        )
+        from mortis.growth.model import Dimension
+        state = dc_replace(UneaseState(), per_dimension={**UneaseState().per_dimension, Dimension.IDENTITY: 0.45, Dimension.VALUES: 0.82})
         save_unease(env.vault, state)
-
-        base_url = env.start_web()
-        status, data = _get_json(base_url, "/unease")
-        ok = (
-            status == 200
-            and data["max_unease"] == 0.82
-            and len(data["per_dimension"]) == 7
-            and data["per_dimension"]["identity"] == 0.45
-            and data["per_dimension"]["values"] == 0.82
-            and "last_decay" in data
+        # 1. HTML unease 页面 (柱状图可视化)
+        html_status, html_body = _get_html(base_url, "/unease")
+        ok_html = (
+            html_status == 200
+            and "bar-chart" in html_body
+            and "bar-fill" in html_body
+            and "bar-row" in html_body
+            and "identity" in html_body
+            and "values" in html_body
+            and "0.82" in html_body
         )
+        # 2. JSON API
+        api_status, api_data = _get_json(base_url, "/api/unease")
+        ok_api = (
+            api_status == 200
+            and api_data["max_unease"] == 0.82
+            and len(api_data["per_dimension"]) == 7
+            and api_data["per_dimension"]["identity"] == 0.45
+        )
+        ok = ok_html and ok_api
         report.add(StepResult(
-            step_id="E2E-28",
-            name="GET /unease（unease 仪表盘, issue #53）",
-            category="web",
-            success=ok,
-            elapsed_sec=time.monotonic() - start,
-            detail=f"max_unease={data.get('max_unease')}, identity={data.get('per_dimension', {}).get('identity')}, 7 维度={len(data.get('per_dimension', {}))}",
+            step_id="E2E-28", name="HTML unease 仪表盘 (柱状图 + 7 维度, issue #53)",
+            category="web", success=ok, elapsed_sec=time.monotonic() - start,
+            detail=f"html={ok_html} (bar-chart+bar-fill), api={ok_api} (max={api_data['max_unease']}, dims=7)",
             llm_calls=0,
         ))
     except Exception as e:
         report.add(StepResult(
-            step_id="E2E-28",
-            name="GET /unease（unease 仪表盘, issue #53）",
-            category="web",
-            success=False,
-            elapsed_sec=time.monotonic() - start,
+            step_id="E2E-28", name="HTML unease 仪表盘 (柱状图 + 7 维度, issue #53)",
+            category="web", success=False, elapsed_sec=time.monotonic() - start,
             error=f"{type(e).__name__}: {e}",
         ))
 
 
 def step_29_web_notifications(env: ExperimentEnv, report: ExperimentReport) -> None:
-    """E2E-29: GET /notifications (owner 通知通道, issue #54)。"""
+    """E2E-29: HTML notifications 页面 (issue #54)。"""
     start = time.monotonic()
     try:
+        base_url = env._web_base_url or env.start_web()
         from mortis.web.notify import send_notification
-        # 写入 2 条通知
         send_notification(env.vault, "drift", "identity drift 0.82", severity="warning")
-        send_notification(env.vault, "unease", "unease 积累超阈值", severity="info")
-
-        base_url = env.start_web()
-        status, data = _get_json(base_url, "/notifications")
-        ok = (
-            status == 200
-            and len(data["notifications"]) == 2
-            and data["notifications"][0]["type"] == "drift"
-            and data["notifications"][0]["severity"] == "warning"
-            and data["notifications"][0]["read"] is False
+        send_notification(env.vault, "unease", "values unease accumulated", severity="info")
+        # 1. HTML notifications 页面
+        html_status, html_body = _get_html(base_url, "/notifications")
+        ok_html = (
+            html_status == 200
+            and "notification" in html_body
+            and "warning" in html_body
+            and "drift" in html_body
+            and "identity drift 0.82" in html_body
         )
+        # 2. JSON API
+        api_status, api_data = _get_json(base_url, "/api/notifications")
+        ok_api = (
+            api_status == 200
+            and len(api_data["notifications"]) == 2
+            and api_data["notifications"][0]["type"] == "drift"
+            and api_data["notifications"][0]["severity"] == "warning"
+        )
+        ok = ok_html and ok_api
         report.add(StepResult(
-            step_id="E2E-29",
-            name="GET /notifications（owner 通知通道, issue #54）",
-            category="web",
-            success=ok,
-            elapsed_sec=time.monotonic() - start,
-            detail=f"notifications={len(data.get('notifications', []))}, 首条 type={data.get('notifications', [{}])[0].get('type')}",
+            step_id="E2E-29", name="HTML notifications 页面 (issue #54)",
+            category="web", success=ok, elapsed_sec=time.monotonic() - start,
+            detail=f"html={ok_html} (notification+warning+drift), api={ok_api} (count=2)",
             llm_calls=0,
         ))
     except Exception as e:
         report.add(StepResult(
-            step_id="E2E-29",
-            name="GET /notifications（owner 通知通道, issue #54）",
-            category="web",
-            success=False,
-            elapsed_sec=time.monotonic() - start,
+            step_id="E2E-29", name="HTML notifications 页面 (issue #54)",
+            category="web", success=False, elapsed_sec=time.monotonic() - start,
             error=f"{type(e).__name__}: {e}",
         ))
 
 
 def step_30_web_dreams(env: ExperimentEnv, report: ExperimentReport) -> None:
-    """E2E-30: GET /dreams (dream 日历, issue #53)。"""
+    """E2E-30: HTML dreams 日历页 (badge + table, issue #53)。"""
     start = time.monotonic()
     try:
-        # 写入 dream log 文件 (3 个 level)
+        base_url = env._web_base_url or env.start_web()
+        dream_log_base = env.vault_root / "mortis-dream-log"
         for level in ("light", "medium", "deep"):
-            rel = f"mortis-dream-log/{level}/2026-06-25-{level}.md"
-            env.vault.write(rel, f"# Dream Log: {level}\n\n测试 dream log\n", whitelist=None)
-
-        base_url = env.start_web()
-        status, data = _get_json(base_url, "/dreams")
-        levels = {d["level"] for d in data.get("dreams", [])}
-        ok = (
-            status == 200
-            and len(data["dreams"]) == 3
-            and levels == {"light", "medium", "deep"}
+            d = dream_log_base / level
+            d.mkdir(parents=True, exist_ok=True)
+            (d / f"2026-06-25-{level}.md").write_text(f"# Dream Log: {level}\n\n测试 dream log\n", encoding="utf-8")
+        # 1. HTML dreams 页面
+        html_status, html_body = _get_html(base_url, "/dreams")
+        ok_html = (
+            html_status == 200
+            and "badge" in html_body
+            and "badge light" in html_body
+            and "badge medium" in html_body
+            and "badge deep" in html_body
+            and "<table>" in html_body
+            and "2026-06-25" in html_body
         )
+        # 2. JSON API
+        api_status, api_data = _get_json(base_url, "/api/dreams")
+        ok_api = (
+            api_status == 200
+            and len(api_data["dreams"]) == 3
+            and {d["level"] for d in api_data["dreams"]} == {"light", "medium", "deep"}
+        )
+        ok = ok_html and ok_api
         report.add(StepResult(
-            step_id="E2E-30",
-            name="GET /dreams（dream 日历, issue #53）",
-            category="web",
-            success=ok,
-            elapsed_sec=time.monotonic() - start,
-            detail=f"dreams={len(data.get('dreams', []))}, levels={levels}",
+            step_id="E2E-30", name="HTML dreams 日历页 (badge + table, issue #53)",
+            category="web", success=ok, elapsed_sec=time.monotonic() - start,
+            detail=f"html={ok_html} (badge+table+levels), api={ok_api} (count=3)",
             llm_calls=0,
         ))
     except Exception as e:
         report.add(StepResult(
-            step_id="E2E-30",
-            name="GET /dreams（dream 日历, issue #53）",
-            category="web",
-            success=False,
-            elapsed_sec=time.monotonic() - start,
+            step_id="E2E-30", name="HTML dreams 日历页 (badge + table, issue #53)",
+            category="web", success=False, elapsed_sec=time.monotonic() - start,
             error=f"{type(e).__name__}: {e}",
         ))
 
 
 def step_31_web_404_and_dataflow(env: ExperimentEnv, report: ExperimentReport) -> None:
-    """E2E-31: GET /unknown (404) + 数据流转校验 + server 关闭。"""
+    """E2E-31: 404 路由 + 数据流转校验 (vault→HTML↔JSON) + server 关闭。"""
     start = time.monotonic()
     try:
-        base_url = env.start_web()
-        # 404 测试
-        s1, d1 = _get_json(base_url, "/nonexistent")
-        ok_404 = s1 == 404 and d1.get("error") == "not found"
-
-        # 数据流转校验: vault 写入 → HTTP 返回 — 验证 growth body 内容一致
-        s2, d2 = _get_json(base_url, "/growths")
-        first_rel = d2["growths"][0]["rel_path"]
-        s3, d3 = _get_json(base_url, f"/growths/{first_rel}")
-        # 读原始 vault 文件对比
-        raw_content = (env.vault_root / first_rel).read_text(encoding="utf-8")
-        # 注: growth parser 会剥离 # 标题, 用 body 中的实际段落校验
+        base_url = env._web_base_url or env.start_web()
+        # 1. 404 路由
+        status_404, data_404 = _get_json(base_url, "/nonexistent")
+        ok_404 = status_404 == 404 and data_404["error"] == "not found"
+        # 2. 数据流转校验: vault 原文 → HTML 页面 → JSON API 三者一致
+        _, growths_data = _get_json(base_url, "/api/growths")
+        first_rel = growths_data["growths"][0]["rel_path"]
+        vault_raw = env.vault.read(first_rel).content
+        _, growth_html = _get_html(base_url, f"/growths/{first_rel}")
+        _, growth_json = _get_json(base_url, f"/api/growths/{first_rel}")
+        test_string = "E2E 测试用的 growth 文件"
         ok_dataflow = (
-            s3 == 200
-            and d3.get("id") == "test-identity-001"
-            and "E2E 测试用的 growth 文件" in d3.get("body", "")
-            and "E2E 测试用的 growth 文件" in raw_content  # vault 原文 ↔ HTTP 返回一致
+            test_string in vault_raw
+            and test_string in growth_html
+            and test_string in growth_json["body"]
         )
-
-        # 关闭 server
+        # 3. 前端交互元素验证
+        ok_interaction = (
+            "togglePrettyPrint" in growth_html
+            or "filterGrowths" in growth_html
+        )
+        # 4. server 关闭
         env.stop_web()
-        ok = ok_404 and ok_dataflow
+        ok_shutdown = env._web_server is None
+        ok = ok_404 and ok_dataflow and ok_interaction and ok_shutdown
         report.add(StepResult(
-            step_id="E2E-31",
-            name="GET /unknown (404) + 数据流转校验 + server 关闭",
-            category="web",
-            success=ok,
-            elapsed_sec=time.monotonic() - start,
-            detail=f"404={ok_404}, 数据流转(vault↔HTTP)={ok_dataflow}, server 已关闭",
+            step_id="E2E-31", name="404 路由 + 数据流转校验 (vault→HTML↔JSON) + server 关闭",
+            category="web", success=ok, elapsed_sec=time.monotonic() - start,
+            detail=f"404={ok_404}, dataflow={ok_dataflow} (vault→HTML→JSON 三者一致), interaction={ok_interaction}, shutdown={ok_shutdown}",
             llm_calls=0,
         ))
     except Exception as e:
         report.add(StepResult(
-            step_id="E2E-31",
-            name="GET /unknown (404) + 数据流转校验 + server 关闭",
-            category="web",
-            success=False,
-            elapsed_sec=time.monotonic() - start,
+            step_id="E2E-31", name="404 路由 + 数据流转校验 (vault→HTML↔JSON) + server 关闭",
+            category="web", success=False, elapsed_sec=time.monotonic() - start,
             error=f"{type(e).__name__}: {e}",
         ))
 

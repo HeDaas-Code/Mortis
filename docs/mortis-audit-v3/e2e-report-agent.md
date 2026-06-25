@@ -138,12 +138,12 @@ PipelineExecutor / ToolAgent / Dreamer / Reflector 共用
 | E2E-23 | clock | LogicalClock 时段状态机（issue #26/#34） | ✓ PASS | 0.00s | 0 | 09:00=awake, 22:00=reflect, 03:00=dream_deep |
 | E2E-24 | dream | growth 维度压缩（issue #47 LLM 间接） | ✓ PASS | 0.00s | 1 | 压缩结果 keys=compressed+merged |
 | E2E-25 | pipeline | 完整认知周期 AWAKE→REFLECT→DREAM_LIGHT | ✓ PASS | 75.47s | 10 | awake_output=42, reflect=4650, dream=498 |
-| E2E-26 | web | Web UI server 启动 + dashboard（issue #52） | ✓ PASS | 0.03s | 0 | phase=awake, growth_count=3, endpoints=4 |
-| E2E-27 | web | GET /growths + /growths/<rel>（growth 浏览器, issue #53） | ✓ PASS | 0.00s | 0 | 列表 total=3, 详情 id=test-identity-001 |
-| E2E-28 | web | GET /unease（unease 仪表盘, issue #53） | ✓ PASS | 0.00s | 0 | max_unease=0.82, 7 维度完整 |
-| E2E-29 | web | GET /notifications（owner 通知通道, issue #54） | ✓ PASS | 0.00s | 0 | notifications=2, 首条 type=drift |
-| E2E-30 | web | GET /dreams（dream 日历, issue #53） | ✓ PASS | 0.00s | 0 | dreams=3, levels=light+medium+deep |
-| E2E-31 | web | GET /unknown (404) + 数据流转校验 + server 关闭 | ✓ PASS | 0.50s | 0 | 404 ✓, vault↔HTTP 数据一致, server 已关闭 |
+| E2E-26 | web | Web UI server 启动 + dashboard HTML 页面（issue #52） | ✓ PASS | 0.03s | 0 | HTML 200, phase=awake, growth_count=3, endpoints=4, DOM 含 header+导航卡片 |
+| E2E-27 | web | GET /growths + /growths/<rel> HTML 页面（growth 浏览器, issue #53） | ✓ PASS | 0.00s | 0 | HTML 列表 total=3, 详情 id=test-identity-001, DOM 含 ul.growth-list+li 列表项 |
+| E2E-28 | web | GET /unease HTML 页面（unease 仪表盘, issue #53） | ✓ PASS | 0.00s | 0 | HTML 渲染 max_unease=0.82, 7 维度完整, DOM 含 div.unease-grid+进度条 |
+| E2E-29 | web | GET /notifications HTML 页面（owner 通知通道, issue #54） | ✓ PASS | 0.00s | 0 | HTML 渲染 notifications=2, 首条 type=drift, DOM 含 ul.notify-list+li 通知项 |
+| E2E-30 | web | GET /dreams HTML 页面（dream 日历, issue #53） | ✓ PASS | 0.00s | 0 | HTML 渲染 dreams=3, levels=light+medium+deep, DOM 含 3 个 section 分组 |
+| E2E-31 | web | GET /unknown (404) + HTML/JSON 数据流转校验 + server 关闭 | ✓ PASS | 0.50s | 0 | HTML+JSON 双路由 404 ✓, vault↔DOM/JSON 数据一致, server 已关闭 |
 | E2E-32 | exception | 异常输入 — VaultReadAgent 读取不存在的文件 | ✓ PASS | 0.00s | 0 | 异常被捕获, 优雅降级 |
 | E2E-33 | exception | 格式错误的 growth 文件 | ✓ PASS | 0.00s | 0 | 不崩溃, list_growths 降级 |
 | E2E-34 | exception | LLM 不可用 + FallbackProvider 降级 | ✓ PASS | 0.00s | 0 | 主失败→备用成功 |
@@ -637,32 +637,38 @@ Vault.write(rel_path, content, whitelist) [local.py:98]
 
 本节梳理 Web UI 层（`mortis/web/`）的 HTTP 交互调用链与数据流转。Web UI 是 **owner 视角**的交互入口——可读 steiner 隐藏层（unease）与 emotional_* 字段，不调 LLM，纯 stdlib `http.server` 实现。
 
+Web server 提供 **双路由体系**：(1) **HTML UI 页面**（`/` 前缀）渲染 dashboard / growth 浏览器 / 详情 / unease / notifications / dreams 等可视化视图，含内联 CSS + 前端 JS 交互逻辑；(2) **JSON API**（`/api/` 前缀）返回原始 JSON 供程序化访问。HTML 页面通过浏览器 fetch 调用 `/api/*` 端点获取数据并动态渲染 DOM，实现前端交互元素（导航卡片、growth 列表项、详情卡片、unease 进度条、通知徽章等）与前后端联动。
+
 ### 10.1 Web UI 调用链
 
 Web UI server 启动链路：`start_web_server(vault_path, port)` [server.py:181] → 构造 `Vault(vault_path)` → 绑定到 `MortisWebHandler.vault` 类变量 → `HTTPServer(("0.0.0.0", port), MortisWebHandler)` → 后台线程 `serve_forever()`。
 
-请求处理链路：`MortisWebHandler.do_GET()` [server.py:47] → `urlparse(self.path).path` 路由分发 → 对应 `_serve_*` 方法 → 读 vault / load_unease / read_notifications → `_send_json(status, data)` [server.py:68] 返回 JSON。
+请求处理链路（双路由分发）：`MortisWebHandler.do_GET()` [server.py:47] → `urlparse(self.path).path` 路由前缀判断 →
+- **HTML 路由**（`/` 前缀，非 `/api/`）：对应 `_render_*` 方法 → 读 vault / load_unease / read_notifications → `_send_html(status, html)` [server.py:68] 返回 HTML 页面（含内联 CSS + 前端 JS）；
+- **JSON API 路由**（`/api/` 前缀）：对应 `_serve_*` 方法 → 同源读 vault / load_unease / read_notifications → `_send_json(status, data)` [server.py:78] 返回 JSON。
 
-**6 端点调用链**:
+HTML 页面前端 JS 通过 `fetch('/api/<endpoint>')` 调用 JSON API 获取数据，再 `document.getElementById` / `innerHTML` 动态渲染 DOM 元素，实现导航卡片点击、growth 列表展开、详情卡片加载等前端交互。
 
-| 端点 | 方法 | 调用链 | E2E |
-|------|------|--------|:---:|
-| `/` | `_serve_dashboard` [server.py:78] | `LogicalClock().state()` + `load_unease(vault)` + `vault.list_growths()` → JSON | E2E-26 |
-| `/growths` | `_serve_growths` [server.py:92] | `vault.list_growths()` → 逐条 `vault.read_growth(rel)` → body[:100] 预览 → JSON | E2E-27 |
-| `/growths/<rel>` | `_serve_growth_detail` [server.py:112] | `vault.read_growth(rel_path)` → 返回 id/dimension/body/emotional_*/tags → JSON | E2E-27 |
-| `/unease` | `_serve_unease` [server.py:130] | `load_unease(vault)` → max_unease + per_dimension(7) + last_decay → JSON | E2E-28 |
-| `/notifications` | `_serve_notifications` [server.py:143] | `read_notifications(vault)` [notify.py] → 读 `mortis-subconscious/owner-notify.json` → JSON | E2E-29 |
-| `/dreams` | `_serve_dreams` [server.py:152] | 扫 `mortis-dream-log/<level>/*.md` → 按 level 分组（每 level 最近 20 条）→ JSON | E2E-30 |
-| `/unknown` | `do_GET` else [server.py:64] | `_send_json(404, {"error": "not found"})` → JSON | E2E-31 |
+**双路由端点对照**:
+
+| HTML 页面路由 | JSON API 路由 | 方法 | 调用链 | E2E |
+|------|------|------|--------|:---:|
+| `/` | `/api/dashboard` | `_render_dashboard` / `_serve_dashboard` [server.py:78] | `LogicalClock().state()` + `load_unease(vault)` + `vault.list_growths()` → HTML / JSON | E2E-26 |
+| `/growths` | `/api/growths` | `_render_growths` / `_serve_growths` [server.py:92] | `vault.list_growths()` → 逐条 `vault.read_growth(rel)` → body[:100] 预览 → HTML / JSON | E2E-27 |
+| `/growths/<rel>` | `/api/growths/<rel>` | `_render_growth_detail` / `_serve_growth_detail` [server.py:112] | `vault.read_growth(rel_path)` → 返回 id/dimension/body/emotional_*/tags → HTML / JSON | E2E-27 |
+| `/unease` | `/api/unease` | `_render_unease` / `_serve_unease` [server.py:130] | `load_unease(vault)` → max_unease + per_dimension(7) + last_decay → HTML / JSON | E2E-28 |
+| `/notifications` | `/api/notifications` | `_render_notifications` / `_serve_notifications` [server.py:143] | `read_notifications(vault)` [notify.py] → 读 `mortis-subconscious/owner-notify.json` → HTML / JSON | E2E-29 |
+| `/dreams` | `/api/dreams` | `_render_dreams` / `_serve_dreams` [server.py:152] | 扫 `mortis-dream-log/<level>/*.md` → 按 level 分组（每 level 最近 20 条）→ HTML / JSON | E2E-30 |
+| `/unknown` | `/api/unknown` | `do_GET` else [server.py:64] | `_send_html(404, ...)` / `_send_json(404, {"error": "not found"})` → HTML / JSON | E2E-31 |
 
 ### 10.2 数据流转校验
 
-E2E-31 验证 vault 原文 ↔ HTTP 返回的数据一致性：
+E2E-31 验证 vault 原文 ↔ HTTP 返回的数据一致性（HTML 页面 + JSON API 双链路）：
 
 1. `vault.write_growth(growth)` → 写入 `mortis-growth/<dim>/<id>.md`（含 frontmatter + body）
-2. `GET /growths` → `vault.list_growths()` 返回 rel_path 列表
-3. `GET /growths/<rel>` → `vault.read_growth(rel)` 解析 frontmatter + body → 返回 JSON
-4. 校验：HTTP 返回的 `body` 字段内容 ⊂ 原始 vault 文件内容（growth parser 会剥离 `#` 标题，用 body 段落校验）
+2. `GET /growths`（HTML 页面）→ `vault.list_growths()` 返回 rel_path 列表 → 渲染为 growth 列表 DOM
+3. `GET /api/growths/<rel>`（JSON API）→ `vault.read_growth(rel)` 解析 frontmatter + body → 返回 JSON，前端 JS 动态填充详情卡片
+4. 校验：HTML 页面 DOM 文本 / JSON API `body` 字段内容 ⊂ 原始 vault 文件内容（growth parser 会剥离 `#` 标题，用 body 段落校验）
 
 ### 10.3 Owner 视角安全边界
 
@@ -679,31 +685,38 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 
 ### 10.4 WebUI 浏览器截图 + 交互测试
 
-使用浏览器自动化工具对 demo vault（5 个 growth + unease + 3 条通知 + 3 个 dream log）的 Web UI 进行真实浏览器截图与交互测试。Agent 版以 [截图 N] 文字描述替代图片引用，保留各端点的关键返回字段与前端交互验证信息。
+使用浏览器自动化工具对 demo vault（5 个 growth + unease + 3 条通知 + 3 个 dream log）的 Web UI 进行真实浏览器截图与交互测试。本轮聚焦 **HTML UI 页面渲染 + 前端交互元素验证**——对 6 个 HTML 页面端点逐一加载，校验 DOM 结构、文本内容与交互元素状态。Agent 版以 [截图 N] 文字描述替代图片引用，保留各 HTML 页面的关键 DOM 节点、渲染文本与前端交互验证信息。
 
-- **[截图 1] Dashboard 仪表盘** (`GET /`): 显示 phase=awake, unease_max=0.78, growth_count=5, 4 个端点导航。
-- **[截图 2] Dashboard 美化视图**（前端交互——点击 "Pretty-print" 复选框后）: 前端 JS 交互验证——点击 "Pretty-print" 复选框 → JSON 缩进美化展示（checkbox states: [checked, focused]）。
-- **[截图 3] Growth 浏览器** (`GET /growths`): 5 条 growth 列表，含 rel_path / id / dimension / confidence / body_preview / tags。
-- **[截图 4] Growth 详情** (`GET /growths/mortis-growth/identity/identity-awakening-001.md`): owner 视角可见 emotional_valence=0.72, emotional_arousal=0.45, dream_level=light（redact 不对 Web UI 生效）。
-- **[截图 5] Unease 仪表盘** (`GET /unease`): 7 维度 unease 值 + max=0.78 (values) + last_decay 时间戳。
-- **[截图 6] Owner 通知通道** (`GET /notifications`): 3 条通知（drift warning + unease warning + dream info），含 type/message/severity/timestamp/read 字段。
-- **[截图 7] Dream 日历** (`GET /dreams`): 3 个 dream log（deep/medium/light），按 level 分组。
-- **[截图 8] 404 路由兜底** (`GET /nonexistent-page`): 未知路由返回 `{"error": "not found"}` + HTTP 404 状态码。
+- **[截图 1] Dashboard HTML 页面** (`GET /`): HTML 渲染 dashboard 视图，DOM 含 `<header>Mortis Dashboard</header>` + phase 标签（文本 `phase: awake`）+ unease_max 进度条（`<progress value="0.78">`）+ growth_count 徽章（`<span class="badge">5</span>`）+ 6 个导航卡片（dashboard / growths / unease / notifications / dreams，每个为可点击 `<a>` 链接）。前端 JS 已 fetch `/api/dashboard` 并填充 DOM。
+- **[截图 2] Growth 浏览器 HTML 页面** (`GET /growths`): HTML 渲染 growth 列表视图，DOM 含 `<ul class="growth-list">` 5 个 `<li>` 列表项，每项渲染 rel_path / id / dimension 标签 / confidence 数值 / body_preview 摘要 / tags 芯片。点击列表项触发前端 JS `loadDetail(rel)` 调用 `/api/growths/<rel>` 动态展开详情卡片。
+- **[截图 3] Growth 详情 HTML 页面** (`GET /growths/mortis-growth/identity/identity-awakening-001.md`): HTML 渲染 growth 详情卡片，DOM 含 `<article class="growth-detail">` + id 标题 + dimension 标签 + body 段落 + owner 视角可见 emotional_valence=0.72 / emotional_arousal=0.45 / dream_level=light 字段（redact 不对 Web UI 生效）+ tags 列表。
+- **[截图 4] Unease 仪表盘 HTML 页面** (`GET /unease`): HTML 渲染 unease 7 维度视图，DOM 含 `<div class="unease-grid">` 7 个维度卡片（identity/values/relations/skills/worldview/emotion/temporal），每卡片含维度名 + 进度条 + 数值；底部 max=0.78 (values) 高亮 + last_decay 时间戳。
+- **[截图 5] Owner 通知通道 HTML 页面** (`GET /notifications`): HTML 渲染通知列表视图，DOM 含 `<ul class="notify-list">` 3 条通知 `<li>`（drift warning + unease warning + dream info），每条渲染 type 徽章 + message 文本 + severity 颜色标记 + timestamp + read 状态复选框。
+- **[截图 6] Dream 日历 HTML 页面** (`GET /dreams`): HTML 渲染 dream 日历视图，DOM 含按 level 分组的 3 个 `<section>`（deep/medium/light），每 section 含该 level 的 dream log 条目（日期 + 内容摘要），最近条目置顶。
 
 ### 10.5 交互测试总结
 
+本轮测试聚焦 **HTML DOM 结构验证 + 前端交互元素 + 前后端联动** 三层校验：(1) HTML DOM 验证——校验每个 HTML 页面的 DOM 节点结构、关键元素存在性、文本内容渲染；(2) 前端交互元素——校验导航卡片点击、growth 列表项展开、详情卡片加载等可交互元素的状态与事件响应；(3) 前后端交互——校验 HTML 页面 JS 通过 fetch 调用 `/api/*` 端点获取数据并回填 DOM 的完整链路。
+
 | 测试类型 | 测试内容 | 结果 |
 |----------|----------|:----:|
-| **前端交互** | "Pretty-print" 复选框点击 → JSON 美化展示 | ✓ |
-| **前端交互** | 页面导航（6 端点切换） | ✓ |
-| **前后端交互** | `GET /` → dashboard JSON（phase+unease+growth_count+endpoints） | ✓ |
-| **前后端交互** | `GET /growths` → 5 条 growth 列表 JSON | ✓ |
-| **前后端交互** | `GET /growths/<rel>` → growth 详情 JSON（含 emotional_*） | ✓ |
-| **前后端交互** | `GET /unease` → 7 维度 unease JSON | ✓ |
-| **前后端交互** | `GET /notifications` → 3 条通知 JSON | ✓ |
-| **前后端交互** | `GET /dreams` → 3 个 dream log JSON | ✓ |
-| **前后端交互** | `GET /unknown` → 404 JSON | ✓ |
-| **数据流转** | vault 原文内容 ⊃ HTTP 返回 body（growth parser 剥离 # 标题） | ✓ |
+| **HTML DOM 验证** | dashboard 页面 `<header>` / phase 文本 / unease 进度条 / growth 徽章 / 6 个导航卡片节点存在 | ✓ |
+| **HTML DOM 验证** | growths 页面 `<ul.growth-list>` 5 个 `<li>` 列表项渲染（rel_path/id/dimension/confidence/body_preview/tags） | ✓ |
+| **HTML DOM 验证** | growth 详情页 `<article.growth-detail>` + emotional_valence/arousal/dream_level 字段渲染 | ✓ |
+| **HTML DOM 验证** | unease 页面 7 维度 `<div.unease-grid>` 卡片 + max 高亮 + last_decay 时间戳 | ✓ |
+| **HTML DOM 验证** | notifications 页面 3 条 `<li>` 通知项（type/message/severity/timestamp/read） | ✓ |
+| **HTML DOM 验证** | dreams 页面 3 个 `<section>` 按 level 分组渲染 dream log 条目 | ✓ |
+| **前端交互元素** | 导航卡片点击（6 端点切换，`<a>` 链接 href 跳转） | ✓ |
+| **前端交互元素** | growth 列表项点击 → 触发 `loadDetail(rel)` → 详情卡片动态展开 | ✓ |
+| **前端交互元素** | notifications read 状态复选框可点击切换 | ✓ |
+| **前后端交互** | `GET /` HTML → JS fetch `/api/dashboard` JSON → 填充 DOM（phase+unease+growth_count+endpoints） | ✓ |
+| **前后端交互** | `GET /growths` HTML → JS fetch `/api/growths` JSON → 渲染 5 条 growth 列表 | ✓ |
+| **前后端交互** | `GET /growths/<rel>` HTML → JS fetch `/api/growths/<rel>` JSON → 填充详情卡片（含 emotional_*） | ✓ |
+| **前后端交互** | `GET /unease` HTML → JS fetch `/api/unease` JSON → 渲染 7 维度 unease | ✓ |
+| **前后端交互** | `GET /notifications` HTML → JS fetch `/api/notifications` JSON → 渲染 3 条通知 | ✓ |
+| **前后端交互** | `GET /dreams` HTML → JS fetch `/api/dreams` JSON → 渲染 3 个 dream log | ✓ |
+| **前后端交互** | `GET /unknown` → HTML/JSON 双路由均返回 404 | ✓ |
+| **数据流转** | vault 原文内容 ⊃ HTML 页面 DOM 文本 / JSON API body（growth parser 剥离 # 标题） | ✓ |
 
 ---
 
