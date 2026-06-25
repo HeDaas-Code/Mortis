@@ -9,10 +9,10 @@ import os
 import time
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import Any, Generator
 
 from .audit import messages_hash, sha256_prefix
-from .base import Message
+from .base import Message, StreamChunk
 
 _logger = logging.getLogger(__name__)
 
@@ -152,6 +152,65 @@ class MinimaxProvider:
             time.monotonic() - start,
         )
         return content
+
+    # ---- 流式接口 ----
+
+    def generate_stream(
+        self,
+        messages: list[Message],
+        *,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+    ) -> Generator[StreamChunk, None, None]:
+        """流式 generate — 通过 SSE 逐块返回增量文本。
+
+        使用 HTTP chunked transfer + Server-Sent Events 格式,
+        每收到一个 ``data: {...}`` 块就解析出 delta 并 yield。
+
+        适用于长文本生成场景, 避免单次调用耗时过长。
+        """
+        if not self._api_key:
+            raise MinimaxAuthError(
+                "MINIMAX_API_KEY not set — export it before using MinimaxProvider"
+            )
+        body = self._build_body(messages, temperature, max_tokens)
+        body["stream"] = True
+        req = urllib.request.Request(
+            url=f"{self._base_url}/chat/completions",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self._api_key}",
+                "Accept": "text/event-stream",
+            },
+            method="POST",
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=self._timeout)
+            for line in resp:
+                line = line.decode("utf-8").strip()
+                if not line or not line.startswith("data:"):
+                    continue
+                data_str = line[len("data:"):].strip()
+                if data_str == "[DONE]":
+                    yield StreamChunk(delta="", finish_reason="stop")
+                    return
+                try:
+                    chunk = json.loads(data_str)
+                    choice = chunk.get("choices", [{}])[0]
+                    delta = choice.get("delta", {}).get("content", "")
+                    finish = choice.get("finish_reason")
+                    if delta or finish:
+                        yield StreamChunk(delta=delta, finish_reason=finish)
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+            resp.close()
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                raise MinimaxAuthError(f"minimax auth failed: HTTP {e.code}") from e
+            raise MinimaxAPIError(f"minimax API HTTP {e.code}") from e
+        except urllib.error.URLError as e:
+            raise MinimaxAPIError(f"minimax API network error: {e}") from e
 
     # ---- 异步接口 (issue #46) ----
     # 用 asyncio.to_thread() 把同步 HTTP 调用移到独立线程,

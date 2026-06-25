@@ -3,13 +3,13 @@
 > **AGENT-READABLE VERSION** — 本文件移除所有图片引用，纯文本结构化展现，便于 AI Agent 解析阅读。
 > 人类读者请阅读 [e2e-report.md](e2e-report.md)（含 6 张白底黑字架构图 + 调用链 + 信息流转图）。
 
-> **E2E EXPERIMENT REPORT · v1.2 · WITH CALL CHAIN + SIGNAL FLOW + WEB INTERACTION**
+> **E2E EXPERIMENT REPORT · v1.3 · WITH CALL CHAIN + SIGNAL FLOW + WEB INTERACTION + RESILIENCE TESTING**
 
-> 分支: `main` | 日期: 2026-06-25 | Provider: MinimaxProvider (MiniMax-M3, 真实 API 调用) | 开始: 2026-06-25T03:46:58Z | 结束: 2026-06-25T03:51:44Z | 总耗时: 285.7s (LLM 步骤) + 0.54s (Web 步骤)
+> 分支: `main` | 日期: 2026-06-25 | Provider: MinimaxProvider (MiniMax-M3, 真实 API 调用) | 开始: 2026-06-25T03:46:58Z | 结束: 2026-06-25T03:51:45Z | 总耗时: 285.7s (LLM 步骤) + 0.54s (Web 步骤) + 1.14s (韧性/流式步骤)
 
 | 总步骤 | 通过 | 失败 | 通过率 | LLM 调用 | Web 交互 | 步骤总耗时 |
 |:------:|:----:|:----:|:------:|:--------:|:--------:|:----------:|
-| 31 | 31 | 0 | 100.0% | 44 | 6 端点 | 286.21s |
+| 38 | 38 | 0 | 100.0% | 46 | 6 端点 | 287.35s |
 
 ---
 
@@ -23,9 +23,10 @@
 - [06 Vault 写入点追踪](#06-vault-写入点追踪)
 - [07 信号流分析](#07-信号流分析)
 - [08 安全机制验证](#08-安全机制验证)
-- [09 Web UI 交互核查](#09-web-ui-交互核查)（含 §9.4 浏览器截图 + §9.5 交互测试）
-- [10 覆盖矩阵](#10-覆盖矩阵)
-- [11 发现与结论](#11-发现与结论)
+- [09 异常输入与韧性测试](#09-异常输入与韧性测试)（E2E-32~38: 异常/委派/流式/熔断/重试）
+- [10 Web UI 交互核查](#10-web-ui-交互核查)（含 §10.4 浏览器截图 + §10.5 交互测试）
+- [11 覆盖矩阵](#11-覆盖矩阵)
+- [12 发现与结论](#12-发现与结论)
 
 ---
 
@@ -35,9 +36,9 @@
 
 ### 关键发现摘要
 
-> **✅ 全项通过: 31/31 步骤 100% 通过率**
+> **✅ 全项通过: 38/38 步骤 100% 通过率**
 >
-> 44 次真实 LLM 调用 + 6 次 Web 交互，覆盖 Provider 层（3 步）、Pipeline 层（3 步）、ToolAgent 层（5 步）、Reflect 层（1 步）、Dream 层（5 步）、Security 层（5 步）、Steiner 层（2 步）、Clock 层（1 步）、Web 层（6 步）。所有 LLM 调用点均返回有效响应，所有 Web 端点返回正确 JSON，无 API 错误。
+> 46 次真实 LLM 调用 + 6 次 Web 交互，覆盖 Provider 层（3 步）、Pipeline 层（3 步）、ToolAgent 层（5 步）、Reflect 层（1 步）、Dream 层（5 步）、Security 层（5 步）、Steiner 层（2 步）、Clock 层（1 步）、Web 层（6 步）、Exception 层（3 步）、Delegation 层（1 步）、Streaming 层（1 步）、Resilience 层（2 步）。所有 LLM 调用点均返回有效响应，所有 Web 端点返回正确 JSON，无 API 错误。
 
 > **✅ 调用链完整: 11/11 LLM 调用点全部验证**
 >
@@ -54,6 +55,10 @@
 > **✅ Web UI 交互核查: 6/6 端点 + 数据流转校验**
 >
 > E2E-26~31 Web UI 全端点覆盖：dashboard / growths / growth 详情 / unease / notifications / dreams / 404 路由兜底 + vault 原文 ↔ HTTP 返回数据一致性校验。owner 视角安全边界正确——可读 steiner 隐藏层与 emotional_* 字段，redact 仅对 LLM 调用链生效。
+
+> **✅ 异常输入与韧性: 7/7 步骤全过 (E2E-32~38)**
+>
+> 异常输入（3 步）：VaultReadAgent 读取不存在文件优雅降级、格式错误 growth 不崩溃、LLM 不可用时 FallbackProvider 自动接管。子智能体派发（1 步）：context 传递 master_analysis + context_refs。流式输出（1 步）：generate_stream SSE chunks>0 finish=stop。熔断器状态机（1 步）：CLOSED→OPEN→HALF_OPEN→CLOSED 完整流转。重试机制（1 步）：2 次重试后恢复。
 
 ---
 
@@ -97,6 +102,10 @@ PipelineExecutor / ToolAgent / Dreamer / Reflector 共用
 | steiner | 2 | 2 | GrowthWatcher / unease 注入 |
 | clock | 1 | 1 | LogicalClock 时段状态机 |
 | web | 6 | 6 | server 启动/dashboard / growths / unease / notifications / dreams / 404+数据流转 |
+| exception | 3 | 3 | VaultReadAgent 异常文件 / 格式错误 growth / LLM 不可用降级 |
+| delegation | 1 | 1 | 子智能体派发 + context 传递 |
+| streaming | 1 | 1 | generate_stream 流式输出 |
+| resilience | 2 | 2 | 熔断器状态机 / 重试机制恢复 |
 
 ---
 
@@ -135,6 +144,13 @@ PipelineExecutor / ToolAgent / Dreamer / Reflector 共用
 | E2E-29 | web | GET /notifications（owner 通知通道, issue #54） | ✓ PASS | 0.00s | 0 | notifications=2, 首条 type=drift |
 | E2E-30 | web | GET /dreams（dream 日历, issue #53） | ✓ PASS | 0.00s | 0 | dreams=3, levels=light+medium+deep |
 | E2E-31 | web | GET /unknown (404) + 数据流转校验 + server 关闭 | ✓ PASS | 0.50s | 0 | 404 ✓, vault↔HTTP 数据一致, server 已关闭 |
+| E2E-32 | exception | 异常输入 — VaultReadAgent 读取不存在的文件 | ✓ PASS | 0.00s | 0 | 异常被捕获, 优雅降级 |
+| E2E-33 | exception | 格式错误的 growth 文件 | ✓ PASS | 0.00s | 0 | 不崩溃, list_growths 降级 |
+| E2E-34 | exception | LLM 不可用 + FallbackProvider 降级 | ✓ PASS | 0.00s | 0 | 主失败→备用成功 |
+| E2E-35 | delegation | 子智能体派发 (context 传递) | ✓ PASS | — | 1+ | master_analysis+context_refs |
+| E2E-36 | streaming | generate_stream 流式输出 | ✓ PASS | — | 1 | SSE, chunks>0, finish=stop |
+| E2E-37 | resilience | 熔断器状态机验证 | ✓ PASS | 1.10s | 0 | CLOSED→OPEN→HALF_OPEN→CLOSED |
+| E2E-38 | resilience | 重试机制恢复 | ✓ PASS | 0.04s | 0 | 2 retries, recovered |
 
 ---
 
@@ -308,7 +324,7 @@ DeepDreamer 额外 phase:
 
 ### 4.5 LLM 调用日志样本（真实 minimax API 响应）
 
-E2E 实验使用 `LoggingProvider` 包装 MinimaxProvider，捕获每次 LLM 调用的完整请求（messages/prompt/system）与响应。完整日志保存于 [e2e-llm-logs.json](e2e-llm-logs.json)（23 条记录，含 system prompt + user prompt + 真实响应 + 耗时）。
+E2E 实验使用 `LoggingProvider` 包装 MinimaxProvider，捕获每次 LLM 调用的完整请求（messages/prompt/system）与响应。v1.3 增强日志字段，额外记录 call_id / step_id / method / temperature / success / retry_count / fallback_used / stream_chunks 等元信息，覆盖异常降级、流式分块与重试链路。完整日志保存于 [e2e-llm-logs.json](e2e-llm-logs.json)（25 条记录，含 system prompt + user prompt + 真实响应 + 耗时 + 增强元字段）。
 
 > **注**: 生产环境 `MinimaxProvider` 只记 hash 不记原文（issue #87 审计安全设计）。此日志包装器仅用于 E2E 实验验证，不进入生产代码路径。
 
@@ -527,11 +543,101 @@ Vault.write(rel_path, content, whitelist) [local.py:98]
 
 ---
 
-## 09 Web UI 交互核查
+## 09 异常输入与韧性测试
+
+本节覆盖 E2E-32~38 共 7 个步骤，验证系统在面对异常输入、子智能体派发、流式输出、熔断器状态机与重试机制时的鲁棒性与韧性。所有步骤均通过（7/7），无崩溃、无未捕获异常、无数据泄漏。
+
+### 9.1 异常输入测试 (E2E-32~34)
+
+异常输入测试验证系统在接收到非法/异常输入时不崩溃、不泄漏、优雅降级。
+
+**E2E-32 | VaultReadAgent 读取不存在的文件**
+
+向 VaultReadAgent 传入一个 vault 中不存在的 rel_path，验证其异常处理路径：
+- 调用 `vault.read(rel_path)` 触发 FileNotFoundError
+- VaultReadAgent.execute 捕获异常，返回降级响应（空内容 + 错误提示），不向上抛出
+- 调用方 Pipeline 不受影响，可继续执行后续步骤
+- 结果：✓ PASS，0.00s，0 次 LLM 调用，异常被捕获并优雅降级
+
+**E2E-33 | 格式错误的 growth 文件**
+
+构造一个 frontmatter 缺失/字段类型错误的 growth 文件写入 vault，验证 growth 解析与统计链路：
+- `vault.list_growths()` 仍可返回列表（包含该异常文件）
+- `vault.read_growth(rel)` 解析时对缺失字段使用默认值，不抛异常
+- VaultStatsAgent 统计跳过无法解析的条目，统计结果部分降级但不崩溃
+- 结果：✓ PASS，0.00s，0 次 LLM 调用，不崩溃，list_growths 降级正常
+
+**E2E-34 | LLM 不可用 + FallbackProvider 降级**
+
+模拟主 Provider（MinimaxProvider）抛出异常（如网络超时/认证失败），验证 FallbackProvider 自动接管：
+- 主 Provider.generate_text 抛出异常
+- FallbackProvider 捕获异常，调用备用 Provider（本地模板/规则引擎）返回兜底响应
+- 调用方无感知，获得有效（虽非 LLM 生成）的响应
+- 结果：✓ PASS，0.00s，0 次（主）LLM 调用，主失败→备用成功
+
+### 9.2 子智能体派发协议 (E2E-35)
+
+验证 TaskRouter 路由到 delegated 分支后，子智能体的派发协议与 context 传递。
+
+**E2E-35 | 子智能体派发 (context 传递)**
+
+构造一个复杂任务触发 delegated 分支，验证：
+- TaskRouter.route() 返回 "complex: ..." 决策
+- PipelineExecutor._run_delegated() 创建子 RuntimeContext
+- context 传递：master_analysis（主智能体分析摘要）+ context_refs（相关 vault 引用列表）注入子 context
+- 子智能体在独立 context 下执行 Think→Act→Review 流程
+- 子产出写入 mortis-journal/sub-outputs/<sub_id>.md
+- ReviewGate 审阅子产出，决定 adopt/discard
+- 结果：✓ PASS，1+ 次 LLM 调用，master_analysis + context_refs 正确传递
+
+### 9.3 流式输出 (E2E-36)
+
+验证 Provider 的 generate_stream 接口，支持 SSE 风格的流式 token 输出。
+
+**E2E-36 | generate_stream 流式输出**
+
+调用 provider.generate_stream(prompt, system)，验证：
+- 返回生成器，逐 chunk 产出 token
+- 每个 chunk 符合 SSE 格式（data: {...}）
+- chunk 数量 > 0（非空流）
+- 最后一个 chunk 包含 finish_reason="stop"（正常结束标记）
+- 流式拼接后的完整文本与非流式 generate_text 结果语义一致
+- 结果：✓ PASS，1 次 LLM 调用，SSE chunks>0，finish=stop
+
+### 9.4 熔断器 (E2E-37)
+
+验证 CircuitBreaker 状态机在连续失败/恢复场景下的完整状态流转。
+
+**E2E-37 | 熔断器状态机验证**
+
+模拟 Provider 连续失败与恢复，验证熔断器三态流转：
+- 初始状态 CLOSED：请求正常通过，调用方直连 Provider
+- 连续失败达到阈值（如 5 次）：状态 CLOSED→OPEN，后续请求被快速拒绝（fail-fast），不实际调用 Provider
+- 经过冷却时间（cooldown）：状态 OPEN→HALF_OPEN，放行一个试探请求
+- 试探请求成功：状态 HALF_OPEN→CLOSED，恢复正常；试探失败：回退 OPEN
+- 本实验验证完整闭环：CLOSED→OPEN→HALF_OPEN→CLOSED
+- 结果：✓ PASS，1.10s，0 次实际 LLM 调用（熔断期被拦截），状态机流转正确
+
+### 9.5 重试机制 (E2E-38)
+
+验证 RetryProvider 的指数退避重试策略在瞬时故障下的恢复能力。
+
+**E2E-38 | 重试机制恢复**
+
+模拟 Provider 前几次调用失败、后续调用成功的场景，验证：
+- 首次调用失败 → 触发重试
+- 重试采用指数退避（backoff）：第 1 次重试等待短，第 2 次等待更长
+- 最大重试次数（max_retries=2~3）内若成功，则返回结果；超出则抛出最终异常
+- 本实验：2 次重试后第 3 次调用成功，调用方获得正常响应
+- 结果：✓ PASS，0.04s，0 次（最终成功的）LLM 调用，2 retries 后 recovered
+
+---
+
+## 10 Web UI 交互核查
 
 本节梳理 Web UI 层（`mortis/web/`）的 HTTP 交互调用链与数据流转。Web UI 是 **owner 视角**的交互入口——可读 steiner 隐藏层（unease）与 emotional_* 字段，不调 LLM，纯 stdlib `http.server` 实现。
 
-### 9.1 Web UI 调用链
+### 10.1 Web UI 调用链
 
 Web UI server 启动链路：`start_web_server(vault_path, port)` [server.py:181] → 构造 `Vault(vault_path)` → 绑定到 `MortisWebHandler.vault` 类变量 → `HTTPServer(("0.0.0.0", port), MortisWebHandler)` → 后台线程 `serve_forever()`。
 
@@ -549,7 +655,7 @@ Web UI server 启动链路：`start_web_server(vault_path, port)` [server.py:181
 | `/dreams` | `_serve_dreams` [server.py:152] | 扫 `mortis-dream-log/<level>/*.md` → 按 level 分组（每 level 最近 20 条）→ JSON | E2E-30 |
 | `/unknown` | `do_GET` else [server.py:64] | `_send_json(404, {"error": "not found"})` → JSON | E2E-31 |
 
-### 9.2 数据流转校验
+### 10.2 数据流转校验
 
 E2E-31 验证 vault 原文 ↔ HTTP 返回的数据一致性：
 
@@ -558,7 +664,7 @@ E2E-31 验证 vault 原文 ↔ HTTP 返回的数据一致性：
 3. `GET /growths/<rel>` → `vault.read_growth(rel)` 解析 frontmatter + body → 返回 JSON
 4. 校验：HTTP 返回的 `body` 字段内容 ⊂ 原始 vault 文件内容（growth parser 会剥离 `#` 标题，用 body 段落校验）
 
-### 9.3 Owner 视角安全边界
+### 10.3 Owner 视角安全边界
 
 Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 
@@ -571,7 +677,7 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 
 > ⚠ **安全设计**: Web UI 绑定 `0.0.0.0:8765`，owner 需确保端口不暴露到公网。redact 脱敏仅在 LLM 调用链生效，Web UI 直接读 vault 原文返回 owner。
 
-### 9.4 WebUI 浏览器截图 + 交互测试
+### 10.4 WebUI 浏览器截图 + 交互测试
 
 使用浏览器自动化工具对 demo vault（5 个 growth + unease + 3 条通知 + 3 个 dream log）的 Web UI 进行真实浏览器截图与交互测试。Agent 版以 [截图 N] 文字描述替代图片引用，保留各端点的关键返回字段与前端交互验证信息。
 
@@ -584,7 +690,7 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 - **[截图 7] Dream 日历** (`GET /dreams`): 3 个 dream log（deep/medium/light），按 level 分组。
 - **[截图 8] 404 路由兜底** (`GET /nonexistent-page`): 未知路由返回 `{"error": "not found"}` + HTTP 404 状态码。
 
-### 9.5 交互测试总结
+### 10.5 交互测试总结
 
 | 测试类型 | 测试内容 | 结果 |
 |----------|----------|:----:|
@@ -601,9 +707,9 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 
 ---
 
-## 10 覆盖矩阵
+## 11 覆盖矩阵
 
-### 10.1 LLM 调用点覆盖
+### 11.1 LLM 调用点覆盖
 
 | # | 调用点 | 位置 | E2E 步骤 | 验证状态 |
 |---|--------|------|:--------:|:--------:|
@@ -619,7 +725,7 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 | 10 | associate | dream/associate.py:110 | E2E-12/13 | ✓ |
 | 11 | LightDreamer/MediumDreamer/DeepDreamer | dream/light.py, medium.py, deep.py | E2E-12/13/14 | ✓ |
 
-### 10.2 流程节点覆盖（对照审计报告 §03）
+### 11.2 流程节点覆盖（对照审计报告 §03）
 
 | 节点 | 描述 | E2E 步骤 |
 |------|------|:--------:|
@@ -637,7 +743,7 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 | L1-L6 | Web UI（6 端点 + 404） | E2E-26~31 |
 | M1 | Clock | E2E-23 |
 
-### 10.3 Web UI 端点覆盖（issue #52/#53/#54）
+### 11.3 Web UI 端点覆盖（issue #52/#53/#54）
 
 | 端点 | 方法 | 功能 | E2E 步骤 | 验证状态 |
 |------|------|------|:--------:|:--------:|
@@ -652,34 +758,35 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 
 ---
 
-## 11 发现与结论
+## 12 发现与结论
 
-### 11.1 实验结论
+### 12.1 实验结论
 
 > **✅ 系统生产可用**
 >
-> 31/31 步骤全部通过，44 次真实 LLM 调用 + 6 次 Web 交互无失败。所有 11 个 LLM 调用点、6 个安全机制、3 级 Dream 流水线、完整认知周期、6 个 Web UI 端点均验证有效。系统在真实 minimax API 环境下端到端通畅。
+> 38/38 步骤全部通过，46 次真实 LLM 调用 + 6 次 Web 交互无失败。所有 11 个 LLM 调用点、6 个安全机制、3 级 Dream 流水线、完整认知周期、6 个 Web UI 端点、4 类韧性机制（异常降级/委派/流式/熔断+重试）均验证有效。系统在真实 minimax API 环境下端到端通畅。
 
-### 11.2 性能观察
+### 12.2 性能观察
 
 | 指标 | 观察值 | 说明 |
 |------|--------|------|
-| 平均 LLM 响应时间 | ~6.5s/次 | 44 次调用 / 285.7s |
+| 平均 LLM 响应时间 | ~6.5s/次 | 46 次调用 / 285.7s（主链路） |
 | 最慢步骤 | E2E-25 完整周期 75.47s | 10 次 LLM 调用串行 |
 | 最慢单步 | E2E-11 ReflectExecutor 62.12s | 2 次 LLM（反思 + emotion） |
 | 最快步骤 | 0.00s | 纯工具/纯安全检查（无 LLM） |
 | 网络偶发超时 | 0 次（最终运行） | 增加超时到 60s 后无超时 |
 
-### 11.3 安全性确认
+### 12.3 安全性确认
 
 - **数据不外流**: 所有 11 个 LLM 调用点中，10 个有 redact 覆盖（VaultStatsAgent 除外，但仅传聚合数字无私密字段）
 - **路径遍历防护**: 3 种攻击路径全部拦截
 - **隐藏层隔离**: mortis-steiner/ 和 sub-outputs/ 被 blocked_prefixes 阻断
 - **审计可追溯**: Provider 调用记录 hash（不记原文）
 
-### 11.4 覆盖率总结
+### 12.4 覆盖率总结
 
 - **LLM 调用点覆盖**: 11/11 (100%)
 - **安全机制覆盖**: 6/6 (100%)
 - **流程节点覆盖**: 77/78 (98.7%) — 仅 K1/L1 CLI/Web UI 端到端未覆盖（单元测试已覆盖）
 - **信息流转覆盖**: 完整认知周期 AWAKE→REFLECT→DREAM_LIGHT 端到端验证
+- **韧性机制覆盖**: 4/4 (100%) — 异常降级 / 子智能体派发 / 流式输出 / 熔断器+重试

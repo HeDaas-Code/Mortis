@@ -6,7 +6,7 @@ import logging
 import time
 
 from .audit import messages_hash, sha256_prefix
-from .base import Message
+from .base import Message, StreamChunk
 
 _logger = logging.getLogger(__name__)
 
@@ -85,6 +85,24 @@ class MockProvider:
             time.monotonic() - start,
         )
         return content
+
+    # ---- 流式接口 ----
+
+    def generate_stream(
+        self,
+        messages: list[Message],
+        *,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+    ):
+        """流式 generate — mock 即时返回, 按 token 逐块 yield。"""
+        msg = self.generate(messages, temperature=temperature, max_tokens=max_tokens)
+        # 按 10 字符分块模拟流式
+        content = msg.content
+        chunk_size = 10
+        for i in range(0, len(content), chunk_size):
+            yield StreamChunk(delta=content[i:i + chunk_size])
+        yield StreamChunk(delta="", finish_reason="stop")
 
     # ---- 异步接口 (issue #46) ----
     # mock 即时返回, 无 I/O, 直接调同步方法即可 (无需 executor)。

@@ -155,10 +155,14 @@ class PipelineExecutor:
         ))
 
         # 2. 生成 sub template（L1）— 用 from_seed 自动注入 parent_seed_hash
+        #    派发协议: 传入主人格 Think 分析结果 + 相关 context refs
+        context_refs = tuple(thread.context_refs) if thread.context_refs else ()
         sub_template = SubTemplate.from_seed(
             sub_id=sub_id,
             task=thread.task,
             seed=self.ctx.seed,
+            master_analysis=think_out.message,
+            context_refs=context_refs,
         )
         sub_runtime = SubRuntime(template=sub_template, ctx=self.ctx)
 

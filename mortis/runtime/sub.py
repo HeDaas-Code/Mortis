@@ -57,6 +57,7 @@ class SubTemplate:
 
     由主人格从 L0 派生，加入风格和任务信息。
     包含 parent_seed_hash 防止 sub 被伪造（issue #8）。
+    包含 context 字段携带主人格分析结果和上下文 (派发协议)。
     """
     sub_id: str
     task: str
@@ -65,6 +66,9 @@ class SubTemplate:
     parent_seed_hash: str = ""  # 主人格 seed 的哈希，防止伪造
     constraints: tuple[str, ...] = SUB_HARD_CONSTRAINTS
     vault_whitelist: tuple[str, ...] = SUB_VAULT_WHITELIST
+    # 派发协议: 主人格 Think 分析结果 + 相关 vault 路径, 传给 sub 作为上下文
+    master_analysis: str = ""  # 主人格的任务分析/拆解
+    context_refs: tuple[str, ...] = ()  # 相关 vault 文件路径列表
 
     @classmethod
     def from_seed(
@@ -74,14 +78,23 @@ class SubTemplate:
         seed: "Seed",
         agency_scope: str | None = None,
         voice: str | None = None,
+        master_analysis: str = "",
+        context_refs: tuple[str, ...] = (),
     ) -> "SubTemplate":
-        """从 seed 派生 L1 模板 — 自动注入 parent_seed_hash。"""
+        """从 seed 派生 L1 模板 — 自动注入 parent_seed_hash。
+
+        Args:
+            master_analysis: 主人格 Think 步骤的分析结果, 传给 sub 作为上下文。
+            context_refs: 主人格识别出的相关 vault 文件路径, 供 sub 参考。
+        """
         return cls(
             sub_id=sub_id,
             task=task,
             voice=voice or seed.tone,
             agency_scope=agency_scope or f"完成以下任务：{task}",
             parent_seed_hash=_seed_hash(seed),
+            master_analysis=master_analysis,
+            context_refs=context_refs,
         )
 
     def verify_seed(self, seed: "Seed") -> bool:
@@ -147,7 +160,7 @@ class SubRuntime:
 
     def system_prompt(self) -> str:
         """生成 sub 的系统 prompt。"""
-        return "\n".join([
+        parts = [
             f"# 你是一个 sub 人格",
             f"",
             f"## 你是谁",
@@ -163,6 +176,23 @@ class SubRuntime:
             f"## 你的权限范围",
             f"{self.template.agency_scope}",
             f"",
+        ]
+        # 派发协议: 注入主人格分析结果
+        if self.template.master_analysis:
+            parts.extend([
+                f"## 主人格分析（上下文）",
+                f"{self.template.master_analysis}",
+                f"",
+            ])
+        # 派发协议: 注入相关 vault 文件路径
+        if self.template.context_refs:
+            parts.extend([
+                f"## 相关 vault 文件",
+                f"主人格已识别以下文件可能与任务相关：",
+                *[f"- {p}" for p in self.template.context_refs],
+                f"",
+            ])
+        parts.extend([
             f"## 硬约束（绝对不可违反）",
             *[f"- {c}" for c in self.template.constraints],
             f"",
@@ -170,6 +200,7 @@ class SubRuntime:
             f"你只能访问以下目录：",
             *[f"- {p}" for p in self.template.vault_whitelist],
         ])
+        return "\n".join(parts)
 
     def messages_for_provider(self) -> list["Message"]:
         """构建发给 provider 的消息列表。"""

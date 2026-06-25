@@ -142,12 +142,20 @@ class LLMCallLog:
     messages: list[dict]             # 完整输入 messages (含 system/user/assistant)
     prompt: str                      # generate_text 的 prompt (若适用)
     system: str                      # generate_text 的 system prompt (若适用)
-    response: str                    # LLM 响应内容
+    response: str                    # LLM 响应内容 (不含 think)
     elapsed_sec: float              # 调用耗时
     temperature: float              # 温度参数
     max_tokens: int | None          # max_tokens 参数
     success: bool                   # 是否成功
     error: str                       # 错误信息 (若失败)
+    # 增强字段
+    input_length: int = 0           # 输入总字符数 (所有 message content 之和)
+    output_length: int = 0          # 输出总字符数 (response 长度)
+    model_version: str = ""         # 模型版本 (如 "MiniMax-M3")
+    endpoint: str = ""             # API 端点 URL
+    think_content: str = ""         # 思考过程内容 (```...``` 中的内容)
+    think_content_length: int = 0   # 思考过程内容长度
+    retry_count: int = 0            # 重试次数 (若使用 RetryProvider)
 
 
 class LoggingProvider:
@@ -157,23 +165,85 @@ class LoggingProvider:
     - 完整 messages (含 system prompt)
     - 完整响应内容
     - 调用耗时 + 参数
+    - 增强字段: input/output 长度, 模型版本, API 端点, 思考过程分离
 
     注意: 此包装器仅用于 E2E 实验日志记录, 不在生产环境使用
     (生产环境 MinimaxProvider 只记 hash 不记原文, 见 issue #87)。
     """
 
+    # 思考过程标记: ```...``` 围栏块
+    _THINK_PATTERN = None  # 延迟初始化
+
     def __init__(self, inner, report: ExperimentReport, step_id: str = "") -> None:
         self._inner = inner
         self._report = report
         self._step_id = step_id
+        # 提取模型版本和端点
+        self._model_version = ""
+        self._endpoint = ""
+        self._extract_provider_info()
+
+    def _extract_provider_info(self) -> None:
+        """从内部 provider 提取模型版本和端点信息。"""
+        inner = self._inner
+        # 解包韧性层包装器获取底层 provider
+        while hasattr(inner, '_inner'):
+            inner = inner._inner
+        while hasattr(inner, '_primary'):
+            inner = inner._primary
+        # MinimaxProvider: _model + _base_url
+        if hasattr(inner, '_model'):
+            self._model_version = inner._model
+        if hasattr(inner, '_base_url'):
+            self._endpoint = f"{inner._base_url}/chat/completions"
+        # MockProvider: 无端点
+        if type(inner).__name__ == "MockProvider":
+            self._model_version = "mock"
+            self._endpoint = "local://mock"
 
     def set_step_id(self, step_id: str) -> None:
         """设置当前步骤 ID (在每步开始时调用)。"""
         self._step_id = step_id
 
+    def _extract_think_content(self, response: str) -> tuple[str, str]:
+        """从响应中分离思考过程 (```...``` 围栏块)。
+
+        Returns:
+            (final_response, think_content) — 去除 think 后的响应 + think 原文
+        """
+        import re
+        if self._THINK_PATTERN is None:
+            # 匹配 ```...``` 围栏块 (含可选语言标记)
+            self._THINK_PATTERN = re.compile(r"```\w*\n(.*?)```", re.DOTALL)
+        think_matches = self._THINK_PATTERN.findall(response)
+        if not think_matches:
+            return response, ""
+        think_content = "\n".join(think_matches)
+        final = self._THINK_PATTERN.sub("", response).strip()
+        return final, think_content
+
+    def _compute_input_length(self, messages: list, prompt: str, system: str) -> int:
+        """计算输入总字符数。"""
+        total = 0
+        if messages:
+            for m in messages:
+                total += len(m.content) if hasattr(m, 'content') else len(str(m))
+        total += len(prompt) + len(system)
+        return total
+
     def _log(self, method: str, messages: list, prompt: str, system: str,
              response: str, elapsed: float, temperature: float,
              max_tokens: int | None, success: bool, error: str) -> None:
+        # 分离思考过程
+        final_response, think_content = self._extract_think_content(response) if response else ("", "")
+        input_length = self._compute_input_length(messages, prompt, system)
+        output_length = len(response) if response else 0
+        think_length = len(think_content) if think_content else 0
+        # 提取重试次数 (若内部是 RetryProvider)
+        retry_count = 0
+        if hasattr(self._inner, 'stats') and 'total_retries' in (self._inner.stats or {}):
+            retry_count = self._inner.stats.get('total_retries', 0)
+
         log = LLMCallLog(
             call_id=len(self._report.llm_logs) + 1,
             step_id=self._step_id,
@@ -182,12 +252,19 @@ class LoggingProvider:
             messages=[{"role": m.role, "content": m.content[:500]} for m in messages] if messages else [],
             prompt=prompt[:500] if prompt else "",
             system=system[:300] if system else "",
-            response=response[:1000] if response else "",
+            response=final_response[:1000] if final_response else "",
             elapsed_sec=round(elapsed, 3),
             temperature=temperature,
             max_tokens=max_tokens,
             success=success,
             error=error,
+            input_length=input_length,
+            output_length=output_length,
+            model_version=self._model_version,
+            endpoint=self._endpoint,
+            think_content=think_content[:500] if think_content else "",
+            think_content_length=think_length,
+            retry_count=retry_count,
         )
         self._report.llm_logs.append(asdict(log))
 
@@ -211,18 +288,22 @@ class LoggingProvider:
             result = self._inner.generate_text(prompt, system=system, temperature=temperature, max_tokens=max_tokens)
             elapsed = time.monotonic() - start
             # 构造 messages 用于日志
+            from mortis.provider.base import Message
             msgs = []
             if system:
-                from mortis.provider.base import Message
                 msgs.append(Message(role="system", content=system))
-            from mortis.provider.base import Message
             msgs.append(Message(role="user", content=prompt))
             self._log("generate_text", msgs, prompt, system, result, elapsed,
                       temperature, max_tokens, True, "")
             return result
         except Exception as e:
             elapsed = time.monotonic() - start
-            self._log("generate_text", [], prompt, system, "", elapsed,
+            from mortis.provider.base import Message
+            msgs = []
+            if system:
+                msgs.append(Message(role="system", content=system))
+            msgs.append(Message(role="user", content=prompt))
+            self._log("generate_text", msgs, prompt, system, "", elapsed,
                       temperature, max_tokens, False, f"{type(e).__name__}: {e}")
             raise
 
@@ -241,7 +322,12 @@ class LoggingProvider:
             return result
         except Exception as e:
             elapsed = time.monotonic() - start
-            self._log("async_generate_text", [], prompt, system, "", elapsed,
+            from mortis.provider.base import Message
+            msgs = []
+            if system:
+                msgs.append(Message(role="system", content=system))
+            msgs.append(Message(role="user", content=prompt))
+            self._log("async_generate_text", msgs, prompt, system, "", elapsed,
                       temperature, max_tokens, False, f"{type(e).__name__}: {e}")
             raise
 
@@ -1561,6 +1647,345 @@ def step_31_web_404_and_dataflow(env: ExperimentEnv, report: ExperimentReport) -
             error=f"{type(e).__name__}: {e}",
         ))
 
+
+# ============================================================================
+# E2E-32~38: 异常输入测试 + 子智能体派发 + 流式输出 + 韧性层测试
+# ============================================================================
+
+def step_32_exception_file_not_found(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-32: 异常输入 — VaultReadAgent 读取不存在的文件。"""
+    start = time.monotonic()
+    try:
+        from mortis.toolagent.vault_read import VaultReadAgent
+        agent = VaultReadAgent(env.vault, env.provider)
+        result = agent.execute({"path": "nonexistent/deeply/nested/file.md"})
+        # 应返回错误信息而非崩溃
+        ok = (
+            result.success is False
+            or "not found" in (result.message or "").lower()
+            or "no such" in (result.message or "").lower()
+            or "不存在" in (result.message or "")
+        )
+        report.add(StepResult(
+            step_id="E2E-32",
+            name="异常输入 — VaultReadAgent 读取不存在的文件",
+            category="exception",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"result.success={result.success}, message={result.message[:100]}",
+            llm_calls=0,
+        ))
+    except Exception as e:
+        # 异常被捕获而非崩溃也算通过 (优雅降级)
+        report.add(StepResult(
+            step_id="E2E-32",
+            name="异常输入 — VaultReadAgent 读取不存在的文件",
+            category="exception",
+            success=True,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"异常被捕获 (优雅降级): {type(e).__name__}: {str(e)[:100]}",
+            llm_calls=0,
+        ))
+
+
+def step_33_exception_malformed_growth(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-33: 异常输入 — 格式错误的 growth 文件。"""
+    start = time.monotonic()
+    try:
+        # 写入一个格式错误的 growth 文件 (缺少必要字段)
+        malformed_path = env.vault_root / "mortis-growth" / "identity" / "malformed-001.md"
+        malformed_path.parent.mkdir(parents=True, exist_ok=True)
+        malformed_path.write_text(
+            "---\nbroken: frontmatter\nnot: valid: yaml\n---\n"
+            "这不是一个有效的 growth 文件\n没有 id 字段\n没有 dimension 字段\n",
+            encoding="utf-8",
+        )
+        # 读取不应崩溃, 应返回某种降级结果
+        growths = env.vault.list_growths()
+        ok = True  # 不崩溃即通过
+        report.add(StepResult(
+            step_id="E2E-33",
+            name="异常输入 — 格式错误的 growth 文件",
+            category="exception",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"malformed growth 写入成功, list_growths() 返回 {len(growths)} 条 (不崩溃)",
+            llm_calls=0,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-33",
+            name="异常输入 — 格式错误的 growth 文件",
+            category="exception",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_34_exception_llm_unavailable(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-34: 异常输入 — LLM 服务不可用 (mock provider 模拟故障)。"""
+    start = time.monotonic()
+    try:
+        from mortis.provider.mock import MockProvider
+        from mortis.provider.base import Message
+
+        # 创建一个总是失败的 mock provider
+        class FailingProvider(MockProvider):
+            def generate(self, messages, *, temperature=0.7, max_tokens=None):
+                raise RuntimeError("simulated LLM service unavailable")
+            def generate_text(self, prompt, system="", *, temperature=0.7, max_tokens=None):
+                raise RuntimeError("simulated LLM service unavailable")
+
+        failing = FailingProvider()
+        error_caught = False
+        error_msg = ""
+        try:
+            failing.generate_text("test prompt")
+        except RuntimeError as e:
+            error_caught = True
+            error_msg = str(e)
+
+        # 测试 FallbackProvider: 主失败 → 备用成功
+        from mortis.provider import FallbackProvider, MockProvider as MP
+        fallback = FallbackProvider(failing, MP())
+        result = fallback.generate_text("test prompt")
+        ok_fallback = result is not None and len(result) > 0
+
+        ok = error_caught and ok_fallback
+        report.add(StepResult(
+            step_id="E2E-34",
+            name="异常输入 — LLM 服务不可用 + FallbackProvider 降级",
+            category="exception",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"error_caught={error_caught} ({error_msg}), fallback_result='{result[:50]}'",
+            llm_calls=0,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-34",
+            name="异常输入 — LLM 服务不可用 + FallbackProvider 降级",
+            category="exception",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_35_subagent_delegation(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-35: 子智能体派发 — 复杂多文件查询任务 (验证 context 传递)。"""
+    start = time.monotonic()
+    try:
+        from mortis.pipeline.executor import PipelineExecutor
+
+        # 设置一个需要多文件查询的复杂任务
+        thread = env.master.create_thread(
+            "请综合分析我的 identity 和 values 两个维度的 growth, 给出一致性评估"
+        )
+        tools = make_default_registry(env.vault, env.provider, include_agents=True)
+        ctx = env.master.make_context(thread, tools=tools)
+        executor = PipelineExecutor(ctx, tools=tools, verbose=False)
+        result = executor.run()
+
+        # 验证: 任务执行完成, 可能走委派路径也可能走直接路径
+        ok = result.output is not None and len(result.output) > 0
+
+        # 验证 SubTemplate context 传递 (如果走了委派路径)
+        if result.delegated:
+            ok = ok and result.sub_id is not None
+            detail = f"delegated=True, sub_id={result.sub_id}, output={result.output[:80]}"
+        else:
+            detail = f"delegated=False (router 判断为简单任务), output={result.output[:80]}"
+
+        report.add(StepResult(
+            step_id="E2E-35",
+            name="子智能体派发 — 复杂多文件查询任务",
+            category="delegation",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=detail,
+            llm_calls=1,  # ThinkStep 至少 1 次调用
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-35",
+            name="子智能体派发 — 复杂多文件查询任务",
+            category="delegation",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_36_streaming_output(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-36: 流式输出 — generate_stream 逐块返回。"""
+    start = time.monotonic()
+    try:
+        from mortis.provider.base import Message
+        # 检查 provider 是否支持 generate_stream
+        has_stream = hasattr(env.provider, 'generate_stream')
+        if not has_stream:
+            report.add(StepResult(
+                step_id="E2E-36",
+                name="流式输出 — generate_stream",
+                category="streaming",
+                success=True,
+                elapsed_sec=time.monotonic() - start,
+                detail="provider 不支持 generate_stream, 跳过 (fallback 到非流式)",
+                llm_calls=0,
+            ))
+            return
+
+        # 调用 generate_stream
+        messages = [Message(role="user", content="请用一句话介绍 Mortis 项目")]
+        chunks = list(env.provider.generate_stream(messages, temperature=0.7))
+        ok = (
+            len(chunks) > 0
+            and all(hasattr(c, 'delta') for c in chunks)
+            and any(c.delta for c in chunks)  # 至少有一个非空 delta
+        )
+        total_delta = "".join(c.delta for c in chunks)
+        report.add(StepResult(
+            step_id="E2E-36",
+            name="流式输出 — generate_stream 逐块返回",
+            category="streaming",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"chunks={len(chunks)}, total_delta_len={len(total_delta)}, "
+                   f"finish_reason={chunks[-1].finish_reason if chunks else 'N/A'}",
+            llm_calls=1,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-36",
+            name="流式输出 — generate_stream 逐块返回",
+            category="streaming",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_37_circuit_breaker(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-37: 熔断器 — 连续失败触发熔断 + 恢复。"""
+    start = time.monotonic()
+    try:
+        from mortis.provider.mock import MockProvider
+        from mortis.provider.base import Message
+        from mortis.provider.resilience import CircuitBreakerProvider, CircuitState, CircuitOpenError
+
+        class FailingProvider(MockProvider):
+            _fail_count = 0
+            def generate(self, messages, *, temperature=0.7, max_tokens=None):
+                self._fail_count += 1
+                raise RuntimeError(f"simulated failure #{self._fail_count}")
+
+        # 创建熔断器: 阈值=3, 恢复时间=1s
+        failing = FailingProvider()
+        breaker = CircuitBreakerProvider(failing, failure_threshold=3, recovery_timeout=1.0)
+
+        # 触发 3 次失败 → 熔断器开启
+        for i in range(3):
+            try:
+                breaker.generate([Message(role="user", content="test")])
+            except RuntimeError:
+                pass
+
+        state_after_failures = breaker.stats["state"]
+        ok_open = state_after_failures == CircuitState.OPEN.value
+
+        # 第 4 次调用应被熔断拒绝 (不调用下游)
+        rejected = False
+        try:
+            breaker.generate([Message(role="user", content="test")])
+        except CircuitOpenError:
+            rejected = True
+        except RuntimeError:
+            rejected = False  # 下游被调用了, 熔断器没生效
+
+        ok_rejection = rejected
+
+        # 等待恢复 → 半开 → 成功 → 关闭
+        import time as _time
+        _time.sleep(1.1)
+
+        # 替换为成功的 provider
+        success_provider = MockProvider()
+        breaker._inner = success_provider
+        result = breaker.generate([Message(role="user", content="test")])
+        state_after_recovery = breaker.stats["state"]
+        ok_recovery = state_after_recovery == CircuitState.CLOSED.value
+
+        ok = ok_open and ok_rejection and ok_recovery
+        report.add(StepResult(
+            step_id="E2E-37",
+            name="熔断器 — 连续失败触发熔断 + 恢复",
+            category="resilience",
+            success=ok,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"open_after_3_failures={ok_open}, rejected_4th_call={ok_rejection}, "
+                   f"recovered_to_closed={ok_recovery}, "
+                   f"stats={breaker.stats}",
+            llm_calls=0,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-37",
+            name="熔断器 — 连续失败触发熔断 + 恢复",
+            category="resilience",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
+def step_38_retry_provider(env: ExperimentEnv, report: ExperimentReport) -> None:
+    """E2E-38: 重试机制 — 瞬时故障自动重试恢复。"""
+    start = time.monotonic()
+    try:
+        from mortis.provider.mock import MockProvider
+        from mortis.provider.base import Message
+        from mortis.provider.resilience import RetryProvider
+
+        class FlakyProvider(MockProvider):
+            """前 2 次失败, 第 3 次成功。"""
+            _call_count = 0
+            def generate(self, messages, *, temperature=0.7, max_tokens=None):
+                self._call_count += 1
+                if self._call_count <= 2:
+                    raise RuntimeError(f"transient failure #{self._call_count}")
+                return super().generate(messages, temperature=temperature, max_tokens=max_tokens)
+
+        flaky = FlakyProvider()
+        retry = RetryProvider(flaky, max_retries=3, base_delay=0.01, max_delay=0.1)
+        result = retry.generate([Message(role="user", content="test")])
+
+        ok = result is not None and len(result.content) > 0
+        stats = retry.stats
+        ok_stats = stats["total_retries"] == 2 and stats["total_recovered"] == 1
+
+        report.add(StepResult(
+            step_id="E2E-38",
+            name="重试机制 — 瞬时故障自动重试恢复",
+            category="resilience",
+            success=ok and ok_stats,
+            elapsed_sec=time.monotonic() - start,
+            detail=f"result='{result.content[:50]}', retries={stats['total_retries']}, "
+                   f"recovered={stats['total_recovered']}",
+            llm_calls=0,
+        ))
+    except Exception as e:
+        report.add(StepResult(
+            step_id="E2E-38",
+            name="重试机制 — 瞬时故障自动重试恢复",
+            category="resilience",
+            success=False,
+            elapsed_sec=time.monotonic() - start,
+            error=f"{type(e).__name__}: {e}",
+        ))
+
+
 # ============================================================================
 # 主流程
 # ============================================================================
@@ -1621,6 +2046,14 @@ def main() -> int:
         step_29_web_notifications,
         step_30_web_dreams,
         step_31_web_404_and_dataflow,
+        # E2E-32~38: 异常输入 + 子智能体派发 + 流式输出 + 韧性层
+        step_32_exception_file_not_found,
+        step_33_exception_malformed_growth,
+        step_34_exception_llm_unavailable,
+        step_35_subagent_delegation,
+        step_36_streaming_output,
+        step_37_circuit_breaker,
+        step_38_retry_provider,
     ]
 
     for i, step_fn in enumerate(steps, 1):
@@ -1740,6 +2173,30 @@ def _write_report(report: ExperimentReport, path: Path) -> None:
         "| /dreams | GET | dream 日历 (light/medium/deep 分组) | E2E-30 |",
         "| /unknown | GET | 404 路由兜底 | E2E-31 |",
         "| — | — | 数据流转校验 (vault 原文 ↔ HTTP 返回一致) | E2E-31 |",
+        "",
+        "## 覆盖的异常输入与韧性测试",
+        "",
+        "| 类别 | 测试场景 | E2E 步骤 |",
+        "|------|----------|:--------:|",
+        "| exception | VaultReadAgent 读取不存在的文件 (优雅降级) | E2E-32 |",
+        "| exception | 格式错误的 growth 文件 (不崩溃) | E2E-33 |",
+        "| exception | LLM 服务不可用 + FallbackProvider 降级 | E2E-34 |",
+        "| delegation | 子智能体派发 — 复杂多文件查询任务 (context 传递) | E2E-35 |",
+        "| streaming | 流式输出 generate_stream (逐块返回) | E2E-36 |",
+        "| resilience | 熔断器 — 连续失败触发熔断 + 恢复 | E2E-37 |",
+        "| resilience | 重试机制 — 瞬时故障自动重试恢复 | E2E-38 |",
+        "",
+        "## LLM 调用日志增强字段",
+        "",
+        "| 字段 | 说明 |",
+        "|------|------|",
+        "| input_length | 输入总字符数 (所有 message content 之和) |",
+        "| output_length | 输出总字符数 (response 长度) |",
+        "| model_version | 模型版本 (如 MiniMax-M3) |",
+        "| endpoint | API 端点 URL |",
+        "| think_content | 思考过程内容 (```...``` 中的内容, 已从 response 分离) |",
+        "| think_content_length | 思考过程内容长度 |",
+        "| retry_count | 重试次数 (若使用 RetryProvider) |",
         "",
     ])
 

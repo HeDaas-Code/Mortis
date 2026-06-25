@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Generator, Protocol
 
 
 @dataclass
@@ -14,6 +14,21 @@ class Message:
     content: str
     name: str | None = None  # for tool role
     tool_call_id: str | None = None  # for tool role
+
+
+@dataclass
+class StreamChunk:
+    """流式输出的单个数据块。
+
+    流式调用 ``generate_stream`` 返回 ``Generator[StreamChunk, None, None]``,
+    调用方逐块消费, 无需等待完整响应。
+
+    Attributes:
+        delta: 本次增量文本 (非完整内容)
+        finish_reason: 结束原因, 仅最后一块有值 (如 "stop" / "length" / None)
+    """
+    delta: str
+    finish_reason: str | None = None
 
 
 class LLMProviderProtocol(Protocol):
@@ -80,8 +95,36 @@ class LLMProviderProtocol(Protocol):
         temperature: float = 0.7,
         max_tokens: int | None = None,
     ) -> str:
-        """异步 generate_text。可选实现; 默认 fallback: 在 executor 中跑同步 generate_text。"""
+        """异步 generate_text。可选实现; 默认 fallback: 在 executor 中跑 generate_text。"""
         ...
+
+    # ---- 流式接口 (可选实现) ----
+    # 返回 Generator[StreamChunk, None, None], 调用方逐块消费。
+    # provider 可不实现; 调用方检测 hasattr(provider, 'generate_stream') 后
+    # fallback 到非流式 generate + 单块返回。
+
+    def generate_stream(
+        self,
+        messages: list[Message],
+        *,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+    ) -> Generator["StreamChunk", None, None]:
+        """流式 generate — 逐块返回增量文本。
+
+        可选实现。未实现时调用方应 fallback 到 ``generate`` 非流式调用,
+        包装为单块 ``StreamChunk(delta=full_content, finish_reason="stop")``。
+
+        Args:
+            messages: 消息列表。
+            temperature: 采样温度。
+            max_tokens: 最大 token 数。
+
+        Yields:
+            ``StreamChunk`` 增量块, 最后一块含 ``finish_reason``。
+        """
+        ...
+        yield StreamChunk(delta="")  # type: ignore[unreachable]
 
 
 async def run_in_executor(func: Any, *args: Any, **kwargs: Any) -> Any:
