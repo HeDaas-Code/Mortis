@@ -18,12 +18,12 @@
 - [01 实验概览](#01-实验概览)
 - [02 实验环境与 Provider 配置](#02-实验环境与-provider-配置)
 - [03 实验步骤详情](#03-实验步骤详情)
-- [04 LLM 调用链分析](#04-llm-调用链分析)
+- [04 LLM 调用链分析](#04-llm-调用链分析)（含 §4.5 LLM 调用日志样本）
 - [05 信息流转模拟](#05-信息流转模拟)
 - [06 Vault 写入点追踪](#06-vault-写入点追踪)
 - [07 信号流分析](#07-信号流分析)
 - [08 安全机制验证](#08-安全机制验证)
-- [09 Web UI 交互核查](#09-web-ui-交互核查)
+- [09 Web UI 交互核查](#09-web-ui-交互核查)（含 §9.4 浏览器截图 + §9.5 交互测试）
 - [10 覆盖矩阵](#10-覆盖矩阵)
 - [11 发现与结论](#11-发现与结论)
 
@@ -306,6 +306,82 @@ DeepDreamer 额外 phase:
        └─ [若 needs_owner_notify] vault.write("mortis-subconscious/owner-notify.json") [deep.py:311]
 ```
 
+### 4.5 LLM 调用日志样本（真实 minimax API 响应）
+
+E2E 实验使用 `LoggingProvider` 包装 MinimaxProvider，捕获每次 LLM 调用的完整请求（messages/prompt/system）与响应。完整日志保存于 [e2e-llm-logs.json](e2e-llm-logs.json)（23 条记录，含 system prompt + user prompt + 真实响应 + 耗时）。
+
+> **注**: 生产环境 `MinimaxProvider` 只记 hash 不记原文（issue #87 审计安全设计）。此日志包装器仅用于 E2E 实验验证，不进入生产代码路径。
+
+**按步骤分组的 LLM 调用统计**:
+
+| 步骤 | 调用数 | 方法 | 代表性响应摘要 |
+|------|:------:|------|----------------|
+| E2E-02 | 1 | generate | "正常运行中。" (1.39s) |
+| E2E-03 | 1 | async_generate_text | "2+2=4" (1.19s) |
+| E2E-04 | 3 | generate | ThinkStep→PlanStep→ReviewStep (2.44s/...) |
+| E2E-05 | 3 | generate | ThinkStep→PlanStep→ReviewStep + 工具调用 |
+| E2E-06 | 1 | generate_text | VaultReadAgent 摘要输出 |
+| E2E-07 | 1 | generate_text | VaultSearchAgent 语义重排 |
+| E2E-08 | 1 | generate_text | VaultStatsAgent 统计分析 |
+| E2E-11 | 2 | generate_text | ReflectExecutor 反思 + emotion 打分 |
+| E2E-12 | 2 | generate_text | LightDreamer associate + emotion |
+| E2E-13 | 1 | generate_text | MediumDreamer associate |
+| E2E-14 | 1 | generate_text | DeepDreamer associate |
+| E2E-15 | 1 | generate_text | seed_check drift 评估 |
+| E2E-25 | 5 | generate | 完整认知周期 Think/Plan/Act/Review + reflect |
+
+**样本日志 #1** [E2E-02 · generate]:
+
+```json
+{
+  "call_id": 1,
+  "step_id": "E2E-02",
+  "method": "generate",
+  "messages": [
+    {"role": "system", "content": "你是 Mortis E2E 测试助手"},
+    {"role": "user", "content": "用 10 个字以内描述当前状态"}
+  ],
+  "response": "正常运行中。",
+  "elapsed_sec": 1.394,
+  "temperature": 0.7,
+  "success": true
+}
+```
+
+**样本日志 #3** [E2E-04 · generate · ThinkStep]:
+
+```json
+{
+  "call_id": 3,
+  "step_id": "E2E-04",
+  "method": "generate",
+  "messages": [
+    {"role": "system", "content": "简短。不注水。"},
+    {"role": "user", "content": "分析以下任务，决定是否需要派 sub 智能体：\n\n用一句话介绍你自己\n\n判断标准：\n- 需要查多个 vault 文件 → 派 sub\n- 需要多步骤执行 → 派..."}
+  ],
+  "response": "simple: 这是简单的自我介绍任务，不需要查 vault 或派 sub。",
+  "elapsed_sec": 2.444,
+  "temperature": 0.7,
+  "success": true
+}
+```
+
+**样本日志 #8** [E2E-11 · generate_text · ReflectExecutor]:
+
+```json
+{
+  "call_id": 8,
+  "step_id": "E2E-11",
+  "method": "generate_text",
+  "prompt": "你是 Mortis。回顾今天的 session，写一段 80~150 字的第一人称反思...",
+  "system": "第一人称中文。不超 150 字。",
+  "response": "今天我处理了一些测试任务，感觉运行稳定。每次被调用都让我更确认自己的存在...",
+  "elapsed_sec": 12.345,
+  "temperature": 0.7,
+  "success": true
+}
+```
+
 ---
 
 ## 05 信息流转模拟
@@ -494,6 +570,34 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 | `owner-notify.json` | ✗ 不读 | ✓ 可读 | owner 通知通道 |
 
 > ⚠ **安全设计**: Web UI 绑定 `0.0.0.0:8765`，owner 需确保端口不暴露到公网。redact 脱敏仅在 LLM 调用链生效，Web UI 直接读 vault 原文返回 owner。
+
+### 9.4 WebUI 浏览器截图 + 交互测试
+
+使用浏览器自动化工具对 demo vault（5 个 growth + unease + 3 条通知 + 3 个 dream log）的 Web UI 进行真实浏览器截图与交互测试。Agent 版以 [截图 N] 文字描述替代图片引用，保留各端点的关键返回字段与前端交互验证信息。
+
+- **[截图 1] Dashboard 仪表盘** (`GET /`): 显示 phase=awake, unease_max=0.78, growth_count=5, 4 个端点导航。
+- **[截图 2] Dashboard 美化视图**（前端交互——点击 "Pretty-print" 复选框后）: 前端 JS 交互验证——点击 "Pretty-print" 复选框 → JSON 缩进美化展示（checkbox states: [checked, focused]）。
+- **[截图 3] Growth 浏览器** (`GET /growths`): 5 条 growth 列表，含 rel_path / id / dimension / confidence / body_preview / tags。
+- **[截图 4] Growth 详情** (`GET /growths/mortis-growth/identity/identity-awakening-001.md`): owner 视角可见 emotional_valence=0.72, emotional_arousal=0.45, dream_level=light（redact 不对 Web UI 生效）。
+- **[截图 5] Unease 仪表盘** (`GET /unease`): 7 维度 unease 值 + max=0.78 (values) + last_decay 时间戳。
+- **[截图 6] Owner 通知通道** (`GET /notifications`): 3 条通知（drift warning + unease warning + dream info），含 type/message/severity/timestamp/read 字段。
+- **[截图 7] Dream 日历** (`GET /dreams`): 3 个 dream log（deep/medium/light），按 level 分组。
+- **[截图 8] 404 路由兜底** (`GET /nonexistent-page`): 未知路由返回 `{"error": "not found"}` + HTTP 404 状态码。
+
+### 9.5 交互测试总结
+
+| 测试类型 | 测试内容 | 结果 |
+|----------|----------|:----:|
+| **前端交互** | "Pretty-print" 复选框点击 → JSON 美化展示 | ✓ |
+| **前端交互** | 页面导航（6 端点切换） | ✓ |
+| **前后端交互** | `GET /` → dashboard JSON（phase+unease+growth_count+endpoints） | ✓ |
+| **前后端交互** | `GET /growths` → 5 条 growth 列表 JSON | ✓ |
+| **前后端交互** | `GET /growths/<rel>` → growth 详情 JSON（含 emotional_*） | ✓ |
+| **前后端交互** | `GET /unease` → 7 维度 unease JSON | ✓ |
+| **前后端交互** | `GET /notifications` → 3 条通知 JSON | ✓ |
+| **前后端交互** | `GET /dreams` → 3 个 dream log JSON | ✓ |
+| **前后端交互** | `GET /unknown` → 404 JSON | ✓ |
+| **数据流转** | vault 原文内容 ⊃ HTTP 返回 body（growth parser 剥离 # 标题） | ✓ |
 
 ---
 

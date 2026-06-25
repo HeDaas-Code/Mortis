@@ -86,6 +86,7 @@ class ExperimentReport:
     total_elapsed_sec: float
     steps: list[StepResult] = field(default_factory=list)
     summary: dict = field(default_factory=dict)
+    llm_logs: list[dict] = field(default_factory=list)  # LLM 调用完整日志
 
     def add(self, step: StepResult) -> None:
         self.steps.append(step)
@@ -121,6 +122,143 @@ class ExperimentReport:
             "by_category": by_cat,
         }
 
+    def save_llm_logs(self, path: Path) -> None:
+        """保存 LLM 调用日志到 JSON 文件。"""
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.llm_logs, f, ensure_ascii=False, indent=2)
+
+
+# ============================================================================
+# LLM 调用日志包装器 — 捕获完整请求/响应用于 E2E 报告
+# ============================================================================
+
+@dataclass
+class LLMCallLog:
+    """单次 LLM 调用的完整日志记录。"""
+    call_id: int                    # 全局调用序号
+    step_id: str                     # 触发此调用的 E2E 步骤 ID
+    method: str                     # generate / generate_text / async_generate_text
+    timestamp: str                   # ISO 时间戳
+    messages: list[dict]             # 完整输入 messages (含 system/user/assistant)
+    prompt: str                      # generate_text 的 prompt (若适用)
+    system: str                      # generate_text 的 system prompt (若适用)
+    response: str                    # LLM 响应内容
+    elapsed_sec: float              # 调用耗时
+    temperature: float              # 温度参数
+    max_tokens: int | None          # max_tokens 参数
+    success: bool                   # 是否成功
+    error: str                       # 错误信息 (若失败)
+
+
+class LoggingProvider:
+    """LLM 调用日志包装器 — 包装任意 provider, 捕获完整请求/响应。
+
+    透明转发所有调用到内部 provider, 同时记录:
+    - 完整 messages (含 system prompt)
+    - 完整响应内容
+    - 调用耗时 + 参数
+
+    注意: 此包装器仅用于 E2E 实验日志记录, 不在生产环境使用
+    (生产环境 MinimaxProvider 只记 hash 不记原文, 见 issue #87)。
+    """
+
+    def __init__(self, inner, report: ExperimentReport, step_id: str = "") -> None:
+        self._inner = inner
+        self._report = report
+        self._step_id = step_id
+
+    def set_step_id(self, step_id: str) -> None:
+        """设置当前步骤 ID (在每步开始时调用)。"""
+        self._step_id = step_id
+
+    def _log(self, method: str, messages: list, prompt: str, system: str,
+             response: str, elapsed: float, temperature: float,
+             max_tokens: int | None, success: bool, error: str) -> None:
+        log = LLMCallLog(
+            call_id=len(self._report.llm_logs) + 1,
+            step_id=self._step_id,
+            method=method,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            messages=[{"role": m.role, "content": m.content[:500]} for m in messages] if messages else [],
+            prompt=prompt[:500] if prompt else "",
+            system=system[:300] if system else "",
+            response=response[:1000] if response else "",
+            elapsed_sec=round(elapsed, 3),
+            temperature=temperature,
+            max_tokens=max_tokens,
+            success=success,
+            error=error,
+        )
+        self._report.llm_logs.append(asdict(log))
+
+    def generate(self, messages, *, temperature=0.7, max_tokens=None):
+        start = time.monotonic()
+        try:
+            result = self._inner.generate(messages, temperature=temperature, max_tokens=max_tokens)
+            elapsed = time.monotonic() - start
+            self._log("generate", messages, "", "", result.content, elapsed,
+                      temperature, max_tokens, True, "")
+            return result
+        except Exception as e:
+            elapsed = time.monotonic() - start
+            self._log("generate", messages, "", "", "", elapsed,
+                      temperature, max_tokens, False, f"{type(e).__name__}: {e}")
+            raise
+
+    def generate_text(self, prompt, system="", *, temperature=0.7, max_tokens=None):
+        start = time.monotonic()
+        try:
+            result = self._inner.generate_text(prompt, system=system, temperature=temperature, max_tokens=max_tokens)
+            elapsed = time.monotonic() - start
+            # 构造 messages 用于日志
+            msgs = []
+            if system:
+                from mortis.provider.base import Message
+                msgs.append(Message(role="system", content=system))
+            from mortis.provider.base import Message
+            msgs.append(Message(role="user", content=prompt))
+            self._log("generate_text", msgs, prompt, system, result, elapsed,
+                      temperature, max_tokens, True, "")
+            return result
+        except Exception as e:
+            elapsed = time.monotonic() - start
+            self._log("generate_text", [], prompt, system, "", elapsed,
+                      temperature, max_tokens, False, f"{type(e).__name__}: {e}")
+            raise
+
+    async def async_generate_text(self, prompt, system="", *, temperature=0.7, max_tokens=None):
+        start = time.monotonic()
+        try:
+            result = await self._inner.async_generate_text(prompt, system=system, temperature=temperature, max_tokens=max_tokens)
+            elapsed = time.monotonic() - start
+            from mortis.provider.base import Message
+            msgs = []
+            if system:
+                msgs.append(Message(role="system", content=system))
+            msgs.append(Message(role="user", content=prompt))
+            self._log("async_generate_text", msgs, prompt, system, result, elapsed,
+                      temperature, max_tokens, True, "")
+            return result
+        except Exception as e:
+            elapsed = time.monotonic() - start
+            self._log("async_generate_text", [], prompt, system, "", elapsed,
+                      temperature, max_tokens, False, f"{type(e).__name__}: {e}")
+            raise
+
+    async def async_generate(self, messages, *, temperature=0.7, max_tokens=None):
+        start = time.monotonic()
+        try:
+            result = await self._inner.async_generate(messages, temperature=temperature, max_tokens=max_tokens)
+            elapsed = time.monotonic() - start
+            self._log("async_generate", messages, "", "", result.content, elapsed,
+                      temperature, max_tokens, True, "")
+            return result
+        except Exception as e:
+            elapsed = time.monotonic() - start
+            self._log("async_generate", messages, "", "", "", elapsed,
+                      temperature, max_tokens, False, f"{type(e).__name__}: {e}")
+            raise
+
 
 # ============================================================================
 # 实验环境 — 临时 vault + seed
@@ -129,7 +267,7 @@ class ExperimentReport:
 class ExperimentEnv:
     """临时实验环境 — 隔离的 vault 目录。"""
 
-    def __init__(self) -> None:
+    def __init__(self, report: ExperimentReport | None = None) -> None:
         self.tmpdir = tempfile.mkdtemp(prefix="mortis-e2e-")
         self.vault_root = Path(self.tmpdir) / "vault"
         self.vault_root.mkdir(parents=True, exist_ok=True)
@@ -138,7 +276,14 @@ class ExperimentEnv:
         self._write_test_growth_files()
         self.vault = Vault(self.vault_root)
         self.seed = load_seed(self.seed_path)
-        self.provider = MinimaxProvider(timeout=60.0) if os.environ.get("MINIMAX_API_KEY") else make_provider("auto")
+        inner_provider = MinimaxProvider(timeout=60.0) if os.environ.get("MINIMAX_API_KEY") else make_provider("auto")
+        # 用 LoggingProvider 包装, 捕获完整 LLM 请求/响应日志
+        if report is not None:
+            self.logging_provider = LoggingProvider(inner_provider, report)
+            self.provider = self.logging_provider
+        else:
+            self.logging_provider = None
+            self.provider = inner_provider
         self.session = Session(session_id=f"e2e-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}")
         self.master = MasterRuntime(
             seed=self.seed,
@@ -150,6 +295,11 @@ class ExperimentEnv:
         self._web_server: HTTPServer | None = None
         self._web_base_url: str | None = None
         self._web_thread: threading.Thread | None = None
+
+    def set_step_id(self, step_id: str) -> None:
+        """设置当前步骤 ID, 用于 LLM 日志关联。"""
+        if self.logging_provider is not None:
+            self.logging_provider.set_step_id(step_id)
 
     def _write_test_seed(self) -> None:
         seed_content = """# Mortis seed — E2E 测试种子
@@ -1431,9 +1581,9 @@ def main() -> int:
         total_elapsed_sec=0,
     )
 
-    env = ExperimentEnv()
+    env = ExperimentEnv(report=report)
     print(f"实验环境: {env.tmpdir}")
-    print(f"Provider: {type(env.provider).__name__}")
+    print(f"Provider: {type(env.provider).__name__} (wrapped: LoggingProvider)")
     print(f"Vault: {env.vault_root}")
     print()
 
@@ -1474,6 +1624,8 @@ def main() -> int:
     ]
 
     for i, step_fn in enumerate(steps, 1):
+        step_id = f"E2E-{i:02d}"
+        env.set_step_id(step_id)
         print(f"[{i:02d}/{len(steps)}] {step_fn.__doc__.strip().split(chr(10))[0]}")
         try:
             step_fn(env, report)
@@ -1487,6 +1639,11 @@ def main() -> int:
     report.finalize()
 
     env.cleanup()
+
+    # 保存 LLM 调用日志
+    llm_logs_path = PROJECT_ROOT / "docs" / "mortis-audit-v3" / "e2e-llm-logs.json"
+    report.save_llm_logs(llm_logs_path)
+    print(f"LLM 调用日志: {llm_logs_path} ({len(report.llm_logs)} 条记录)")
 
     # 生成报告 (写入 raw 文件, 不覆盖手工版 e2e-report.md / e2e-report-agent.md)
     report_path = PROJECT_ROOT / "docs" / "mortis-audit-v3" / "e2e-report-raw.md"
