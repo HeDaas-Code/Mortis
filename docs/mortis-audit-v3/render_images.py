@@ -1207,60 +1207,90 @@ def render_e2e_05_info_flow():
 # E2E Figure 6: 信号传播图
 # ============================================================
 def render_e2e_06_signal_flow():
-    fig, ax = _setup_ax((16, 11))
+    fig, ax = _setup_ax((16, 13))
     ax.set_title("E2E Figure 6 · 信号传播图 — growth 写入触发 watcher → unease 积累 → 注入 system prompt → 影响 LLM 输出",
                  fontsize=14, weight="bold", pad=20)
 
-    # 1. growth 写入 (信号源)
-    _box(ax, 3, 85, 22, 10, "1. 信号源\nLightDreamer.CRYSTALLIZE\nvault.write_growth\n[VAULT-WRITE]\nmortis-growth/<dim>/<id>.md", fontsize=7, weight="bold")
-    _arrow(ax, 25, 90, 33, 90, "文件变更事件")
+    # 顶部信号源链: 1→2→3→4 (水平)
+    _box(ax, 2, 86, 20, 9,
+         "1. 信号源\nLightDreamer.CRYSTALLIZE\nvault.write_growth [VAULT-WRITE]\nmortis-growth/<dim>/<id>.md",
+         fontsize=7, weight="bold")
+    _arrow(ax, 22, 90.5, 25, 90.5, "文件变更")
 
-    # 2. GrowthWatcher
-    _box(ax, 33, 85, 22, 10, "2. GrowthWatcher\nwatchdog Observer\nwatcher.py:169\nhandler._on_modified\n提取 Dimension", fontsize=7)
-    _arrow(ax, 55, 90, 63, 90, "callback(dim)")
+    _box(ax, 25, 86, 20, 9,
+         "2. GrowthWatcher\nwatchdog Observer\nwatcher.py:169\nhandler._on_modified\n提取 Dimension",
+         fontsize=7)
+    _arrow(ax, 45, 90.5, 48, 90.5, "callback(dim)")
 
-    # 3. SteinerController
-    _box(ax, 63, 85, 22, 10, "3. SteinerController\n_on_edit(dim)\nlifecycle.py:47\ndebounce 1s\n→ accumulate", fontsize=7)
-    _arrow(ax, 74, 85, 74, 75, "触发")
+    _box(ax, 48, 86, 20, 9,
+         "3. SteinerController\n_on_edit(dim)\nlifecycle.py:47\ndebounce 1s",
+         fontsize=7)
+    _arrow(ax, 68, 90.5, 71, 90.5)
 
-    # 4. accumulate + save
-    _box(ax, 63, 65, 32, 10, "4. accumulate(state, dim, delta=+0.1)\nunease.py:150\nper_dimension[dim] += 0.1\n→ save_unease(vault, state)\n[VAULT-WRITE] mortis-steiner/unease.json", fontsize=7)
-    _arrow(ax, 95, 65, 95, 50, "保存")
+    _box(ax, 71, 86, 27, 9,
+         "4. accumulate + save\nunease.py:150\nper_dimension[dim] += 0.1\n→ save_unease [VAULT-WRITE]\nmortis-steiner/unease.json",
+         fontsize=7, weight="bold")
 
-    # 5. 注入 RuntimeContext
-    _box(ax, 3, 60, 30, 8, "5. RuntimeContext\nmessages_for_provider()\ncontext.py:130", fontsize=7, weight="bold")
-    _box(ax, 38, 60, 22, 8, "unease_prompt_for_injection()\ncontext.py:110\nload_unease + decay", fontsize=7)
-    _box(ax, 3, 48, 30, 8, "unease_prompt(state)\nprompt.py:53\n5 档文案 (none/light/\nmedium/heavy/severe)", fontsize=7)
-    _box(ax, 38, 48, 22, 8, "Message(role=system,\ncontent=unease_text)\n注入位置: tone 之后\ngrowth 之前", fontsize=7)
-    _arrow(ax, 79, 65, 18, 60, "读取 unease")
-    _arrow(ax, 18, 60, 18, 56)
-    _arrow(ax, 33, 64, 38, 64)
-    _arrow(ax, 49, 60, 18, 56)
-    _arrow(ax, 49, 48, 49, 44, "注入")
+    # 4 → 5 "读取 unease": L 形（先下后左），标签落在空白区，不压任何框
+    _arrow(ax, 72, 86, 72, 82)
+    _arrow(ax, 72, 82, 28, 82, "读取 unease")
+    _arrow(ax, 28, 82, 28, 80)
 
-    # 6. 影响 LLM
-    _box(ax, 3, 32, 40, 10, "6. LLM 调用 ★LLM#1-#4\nThinkStep/PlanStep/ActStep/ReviewStep\nctx.provider.generate(messages)\nmessages[0] 含 unease 潜台词", fontsize=7, weight="bold")
-    _arrow(ax, 25, 48, 25, 42)
+    # 4 → 7 "drift 出口": 垂直向下
+    _arrow(ax, 88, 86, 88, 76, "drift 出口")
 
-    # 7. drift 检测 (闭环另一条路)
-    _box(ax, 55, 32, 40, 10, "7. drift 检测 (DeepDreamer)\nseed_check(seed, growth_summary,\nprovider, vault) ★LLM#7\nredact_snippet ✓\n→ DriftReport", fontsize=7)
-    _arrow(ax, 63, 65, 75, 42, "另一个出口")
+    # 左列: 注入链 (5 → unease_prompt_for_injection → unease_prompt → Message → LLM)
+    _box(ax, 2, 72, 26, 8,
+         "5. RuntimeContext\nmessages_for_provider()\ncontext.py:130",
+         fontsize=7, weight="bold")
+    _arrow(ax, 15, 72, 15, 68, "调用")
 
-    # 8. owner 通知 (闭环)
-    _box(ax, 55, 14, 40, 10, "8. should_notify_owner(unease)\ndrift.py:22\nmax(per_dim) ≥ 0.75\n→ owner-notify.json\n[VAULT-WRITE]\n→ web/notify.py", fontsize=7)
-    _arrow(ax, 75, 32, 75, 24, "drift 报警")
+    _box(ax, 2, 60, 26, 8,
+         "unease_prompt_for_injection()\ncontext.py:110\nload_unease + decay",
+         fontsize=7)
+    _arrow(ax, 15, 60, 15, 56)
 
-    # 9. 闭环
-    _box(ax, 3, 14, 40, 10, "9. 闭环\nowner 收到 drift 报警\n→ 编辑 growth 记忆\n→ 回到 step 1 (GrowthWatcher 检测)", fontsize=7, fc="#F8F8F8", weight="bold")
-    _arrow(ax, 75, 14, 43, 18, "owner 编辑", ls="--", lw=1.2)
+    _box(ax, 2, 48, 26, 8,
+         "unease_prompt(state)\nprompt.py:53\n5 档文案 (none/light/\nmedium/heavy/severe)",
+         fontsize=7)
+    _arrow(ax, 15, 48, 15, 44)
 
-    # 信号数据结构标注
-    _box(ax, 3, 2, 22, 6, "unease_state\nper_dimension: dict\nmax_unease(): float\nsteiner/unease.py:63", fontsize=6, fc="#F0F0F0")
-    _box(ax, 28, 2, 22, 6, "DriftReport\nper_dimension\ntotal_drift\nneeds_notify\nseed_check.py:38", fontsize=6, fc="#F0F0F0")
-    _box(ax, 53, 2, 22, 6, "Growth\ndimension(7)\nconfidence\nemotional_*\nredact 覆盖 ✓", fontsize=6, fc="#F0F0F0")
-    _box(ax, 78, 2, 18, 6, "emotion_weight\n|v|×a\nrecall.py:26", fontsize=6, fc="#F0F0F0")
+    _box(ax, 2, 36, 26, 8,
+         "Message(role=system,\ncontent=unease_text)\n注入位置: tone 之后\ngrowth 之前",
+         fontsize=7)
+    _arrow(ax, 15, 36, 15, 32, "注入")
 
-    ax.text(33, 1, "→ 信号传递  ╌ 闭环反馈  ★LLM#N = LLM 调用点  [VAULT-WRITE] = vault 写入",
+    _box(ax, 2, 22, 26, 10,
+         "6. LLM 调用 ★LLM#1-#4\nThinkStep/PlanStep/ActStep\n/ReviewStep\nctx.provider.generate(messages)\nmessages[0] 含 unease 潜台词",
+         fontsize=7, weight="bold")
+
+    # 右列: drift 链 (7 → 8)
+    _box(ax, 71, 66, 27, 10,
+         "7. drift 检测 (DeepDreamer)\nseed_check(seed, growth_summary,\nprovider, vault) ★LLM#7\nredact_snippet ✓\n→ DriftReport",
+         fontsize=7, weight="bold")
+    _arrow(ax, 84, 66, 84, 62, "drift 报警")
+
+    _box(ax, 71, 52, 27, 10,
+         "8. should_notify_owner(unease)\ndrift.py:22\nmax(per_dim) ≥ 0.75\n→ owner-notify.json [VAULT-WRITE]\n→ web/notify.py",
+         fontsize=7, weight="bold")
+
+    # 8 → 9 "owner 编辑": 斜线穿过右下空白区
+    _arrow(ax, 84, 52, 60, 18, "owner 收到报警", ls="--", lw=1.2)
+
+    # 9. 闭环 (底部居中)
+    _box(ax, 30, 8, 40, 10,
+         "9. 闭环\nowner 收到 drift 报警 → 编辑 growth 记忆\n→ 回到 step 1 (GrowthWatcher 检测文件变更)",
+         fontsize=7, fc="#F8F8F8", weight="bold")
+
+    # 9 → 1 闭环反馈: 沿左边距向上 (x=1)，不压任何左列框
+    _arrow(ax, 30, 13, 1, 13, ls="--", lw=1.2)
+    _arrow(ax, 1, 13, 1, 90, "owner 编辑 growth → step 1", ls="--", lw=1.2)
+    _arrow(ax, 1, 90, 2, 90, ls="--", lw=1.2)
+
+    # LLM → 闭环
+    _arrow(ax, 15, 22, 35, 18)
+
+    ax.text(33, 1, "→ 信号传递    ╌ 闭环反馈    ★LLM#N = LLM 调用点    [VAULT-WRITE] = vault 写入",
             fontsize=7, color="#555555")
 
     plt.tight_layout()
