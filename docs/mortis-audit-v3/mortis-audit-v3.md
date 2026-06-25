@@ -3,13 +3,13 @@
 > **HUMAN-READABLE VERSION (WITH DIAGRAMS)** — 本文件含 10 张白底黑字架构图，适合人类阅读。
 > AI Agent 请阅读 [mortis-audit-v3-agent.md](mortis-audit-v3-agent.md)（纯文本结构化版本，无图片引用）。
 >
-> **CODE AUDIT REPORT · v3.1 · METHOD-LEVEL + TEST COVERAGE + TIMELINE**
+> **CODE AUDIT REPORT · v3.2 · METHOD-LEVEL + TEST COVERAGE + TIMELINE**
 >
-> 分支: `main` (含 PR #66 合并) | 日期: 2026-06-25 | 代码量: ~9,800 行源码 + 7,200 行测试 | 测试: 986 passed, 2 skipped | Issues: 88 全部关闭
+> 分支: `main` (含 PR #66 合并) | 日期: 2026-06-25 | 代码量: ~11,470 行源码 + 7,200 行测试 | 测试: 1078 passed, 2 skipped | Issues: 90 全部关闭
 
 | 子包模块 | 核心抽象 | LLM 调用点 | Redact 覆盖 | 已修漏洞 | 测试文件 | 流程节点 |
 |:--------:|:--------:|:----------:|:-----------:|:--------:|:--------:|:--------:|
-| 16 | 6 | 11 | 8/11 | 22 | 64 | 78 |
+| 18 | 6 | 11 | 8/11 | 23 | 68 | 83 |
 
 ---
 
@@ -34,24 +34,24 @@
 
 ### 审计范围
 
-审计基于 `main` 分支 HEAD `1dadd28`（2026-06-25），覆盖：
-- **方法级审计**：16 个子包、60 个 Python 模块、约 80 个 class、约 290 个方法/函数
-- **测试覆盖分析**：64 个测试文件、约 180 个测试类、986 个测试用例、78 个流程节点
-- **时间轴**：5 天开发周期（2026-06-20 至 2026-06-25）、60+ 提交、88 个 issues、10+ 分支
+审计基于 `main` 分支 HEAD `d11dfed`（2026-06-25），覆盖：
+- **方法级审计**：18 个子包、66 个 Python 模块、约 90 个 class、约 320 个方法/函数
+- **测试覆盖分析**：68 个测试文件、约 195 个测试类、1078 个测试用例、83 个流程节点
+- **时间轴**：5 天开发周期（2026-06-20 至 2026-06-25）、65+ 提交、90 个 issues、12+ 分支
 
 ### 关键发现摘要
 
 > **✅ 架构健康度: 良好**
 >
-> 16 个子包采用清晰的 Protocol-based 分层架构，无循环依赖。底层（seed/clock）零内部依赖，中层（growth/vault/provider）提供数据与抽象，上层（runtime/pipeline）编排，顶层（cli/web）入口。vault 作为认知系统中枢被 7 个包依赖，growth 作为次中枢被 5 个包依赖。
+> 18 个子包采用清晰的 Protocol-based 分层架构，无循环依赖。底层（seed/clock）零内部依赖，中层（growth/vault/provider）提供数据与抽象，上层（runtime/pipeline）编排，顶层（cli/web/gateway）入口。vault 作为认知系统中枢被 7 个包依赖，growth 作为次中枢被 5 个包依赖。v3.3 新增 gateway 渠道抽象层 + web 对话服务，扩展 owner 交互入口。
 
-> **✅ 安全状态: 22 项已修 / 0 项潜在**
+> **✅ 安全状态: 23 项已修 / 0 项潜在**
 >
-> 已修复 22 个安全漏洞（含 S1-S3 路径遍历、#6 白名单下沉、#17 ReviewGate 越权、#38 steiner 隐藏层、#67 中段绕过、#71 异常吞没、#73 redact、CRITICAL-1/2 数据泄漏、#83-#88 redact 共享模块与统一类型）。**所有 11 个 LLM 调用点中 8 个已覆盖 redact**（#9/#10/#4/#5/#6/#7 + growth preview + seed_check），剩余 3 个为 pipeline 层带人格上下文（#1/#2/#3）和纯统计数字（#11），无私密字段泄漏风险。
+> 已修复 23 个安全漏洞（含 S1-S3 路径遍历、#6 白名单下沉、#17 ReviewGate 越权、#38 steiner 隐藏层、#67 中段绕过、#71 异常吞没、#73 redact、CRITICAL-1/2 数据泄漏、#83-#88 redact 共享模块与统一类型、#90 对话 API conversation_id 路径遍历）。**所有 11 个 LLM 调用点中 8 个已覆盖 redact**（#9/#10/#4/#5/#6/#7 + growth preview + seed_check），剩余 3 个为 pipeline 层带人格上下文（#1/#2/#3）和纯统计数字（#11），无私密字段泄漏风险。
 
-> **✅ 测试覆盖: 986 passed / 78 节点**
+> **✅ 测试覆盖: 1078 passed / 83 节点**
 >
-> 64 个测试文件覆盖 78 个流程节点（A-M 共 13 大类）。覆盖最密集：Dream 流水线（C 类 10 文件）、Growth 生命周期（D 类 10 文件）、Vault 安全（I 类 8 文件）。覆盖薄弱：Web UI（L 类 1 文件）、CLI 命令（K 类 2 文件）。Gap 分析：A1 主循环入口端到端未覆盖。
+> 68 个测试文件覆盖 83 个流程节点（A-N 共 14 大类）。覆盖最密集：Dream 流水线（C 类 10 文件）、Growth 生命周期（D 类 10 文件）、Vault 安全（I 类 8 文件）。v3.3 新增对话服务（test_web_chat.py 40 测试）+ Gateway 渠道（test_gateway.py 21 测试）+ 路径遍历防护（9 测试）。Gap 分析：A1 主循环入口端到端未覆盖。
 
 > **ℹ️ 调用链复杂度: 中等**
 >
@@ -500,19 +500,56 @@
 - `run_goodnight(vault_path, provider_kind, seed_path, deep) -> dict` (line 24)
 - `_do_reflect/_do_dream_light/_do_dream_deep/_do_erode`
 
-### 2.15 web 包（Web UI + 通知）
+### 2.15 web 包（Web UI + 通知 + 对话服务）
 
 #### web/server.py
 - `class MortisWebHandler(BaseHTTPRequestHandler)` (line 38): HTTP 处理器
   - `do_GET/_send_json/_serve_dashboard/_serve_growths/_serve_growth_detail/_serve_unease/_serve_notifications/_serve_dreams`
-- `start_web_server(vault_path, port) -> HTTPServer` (line 181)
+  - `do_POST` (line 540): 路由 `/api/chat`（同步）+ `/api/chat/stream`（SSE 流式）
+  - `do_DELETE` (line 854): 路由 `/api/conversations/<cid>` 删除对话
+  - `_serve_html_chat()`: 渲染 OpenUI 风格 HTML 对话页面（chat-layout + sidebar + messages + input）
+- `start_web_server(vault_path, port, *, chat_service=None) -> HTTPServer` (line 181)
+
+#### web/chat.py（v3.3 新增, issue #88/#90）
+- `is_valid_conversation_id(cid) -> bool` (line 30): 路径遍历防护校验（仅 `[a-zA-Z0-9-]`）
+- `@dataclass ChatMessage` (line 45): role/content/timestamp
+- `@dataclass Conversation` (line 55): conversation_id/created_at/updated_at/messages/title
+  - `add_user(content) -> ChatMessage` / `add_assistant(content) -> ChatMessage`
+- `@dataclass ChatResponse` (line 75): conversation_id/message/role/elapsed_sec
+- `class ChatService` (line 82): 多轮对话服务
+  - `send(user_message, conversation_id, *, temperature) -> ChatResponse`: 同步对话
+  - `stream(user_message, conversation_id, *, temperature) -> Generator[StreamChunk]`: SSE 流式
+  - `_build_messages(conv) -> list[Message]`: 人格注入（tone + unease + growth 上下文）
+  - 持久化到 `mortis-journal/conversations/<cid>.json`
 
 #### web/notify.py
 - `send_notification(vault, ntype, message, severity) -> None` (line 36) `[VAULT-WRITE]` `[SIGNAL-notification]`
 - `read_notifications(vault) -> list[dict]` (line 86)
 - `mark_read(vault, index) -> bool` (line 102) `[VAULT-WRITE]`
 
-### 2.16 顶层模块
+### 2.16 gateway 包（v3.3 新增, issue #89 — 对话渠道抽象层）
+
+#### gateway/base.py
+- `@dataclass InboundMessage`: channel/sender_id/content/conversation_id/timestamp/metadata
+- `@dataclass OutboundMessage`: channel/recipient_id/content/conversation_id/timestamp/metadata
+- `class Channel(Protocol)`: name + `send(OutboundMessage)` + `start()` + `stop()`
+
+#### gateway/registry.py
+- `register_channel(name, factory)` / `get_channel(name) -> Channel` / `list_channels() -> list[str]`
+- 自动注册 `WebChannel` 为 `"web"`
+
+#### gateway/web.py
+- `class WebChannel`: name="web"，send/start/stop 均 no-op（被动式渠道，回复通过 SSE 同步返回）
+
+#### gateway/gateway.py
+- `class Gateway`: chat_service + `_channels` dict + `_sender_map` dict
+  - `register_channel(channel)` / `get_channel(name)` / `list_channels()`
+  - `handle_inbound(InboundMessage) -> OutboundMessage`: 同步路由（sender 映射 → ChatService.send → channel.send 推送）
+  - `handle_inbound_stream(InboundMessage) -> tuple[str, Generator]`: 流式路由
+  - `_resolve_conversation(msg)`: 优先 msg.conversation_id > `_sender_map[channel:sender_id]`
+  - `start_all()` / `stop_all()`: 批量管理渠道生命周期
+
+### 2.17 顶层模块
 
 #### redact.py（共享 redact 工具）
 - `SENSITIVE_PATTERNS` (line 30): 6 个 redact 模式
@@ -730,12 +767,12 @@
 
 | 维度 | 数量 |
 |------|------|
-| test_*.py 文件总数 | **64** |
-| 测试类总数 | 约 **180+** |
-| 测试用例总数 | **986 passed, 2 skipped** |
-| 流程节点总数 | **78** |
-| 已覆盖节点 | **77**（A1 未覆盖） |
-| 覆盖率 | **98.7%** |
+| test_*.py 文件总数 | **68** |
+| 测试类总数 | 约 **195+** |
+| 测试用例总数 | **1078 passed, 2 skipped** |
+| 流程节点总数 | **83** |
+| 已覆盖节点 | **82**（A1 未覆盖） |
+| 覆盖率 | **98.8%** |
 
 ---
 
@@ -954,7 +991,7 @@ Vault 安全纵深防御、Redact 覆盖矩阵、漏洞清单与 Provider 隔离
 
 ### 安全漏洞清单
 
-#### 已修复漏洞（22 项）
+#### 已修复漏洞（23 项）
 
 | ID | 漏洞 | 修复 | 文件 | 状态 |
 |----|------|------|------|:----:|
@@ -977,6 +1014,7 @@ Vault 安全纵深防御、Redact 覆盖矩阵、漏洞清单与 Provider 隔离
 | #86 | session 发 LLM 未 redact | associate + score_emotion 加 redact | associate.py:83, emotion.py:62 | ✅ 已修 |
 | #87 | provider 无 prompt 审计日志 | `sha256_prefix` 审计 log | provider/audit.py, toolagent/base.py:102 | ✅ 已修 |
 | #88 | 两套 ToolResult 易混淆 | 统一为 `tools.base.ToolResult` | toolagent/base.py | ✅ 已修 |
+| #90 | 对话 API conversation_id 路径遍历 | `is_valid_conversation_id()` 校验 | web/chat.py:30 | ✅ 已修 |
 | #45 | 单 LLM 后端 | 多 LLM 注册表 + 任务路由 | provider/registry.py, router.py | ✅ 已修 |
 | #46 | 无 async 接口 | async_generate + async_generate_text | provider/base.py, mock.py, minimax.py | ✅ 已修 |
 | #47 | growth 维度膨胀 | 维度压缩 | growth/compress.py | ✅ 已修 |
@@ -1033,7 +1071,7 @@ owner 手动编辑 growth 文件 → GrowthWatcher 检测 → unease 注入
 
 ## 09 分支与 Issue 时间轴
 
-5 天开发周期（2026-06-20 至 2026-06-25）、60+ 提交、88 个 issues、10+ 分支的完整时间轴。
+5 天开发周期（2026-06-20 至 2026-06-25）、65+ 提交、90 个 issues、12+ 分支的完整时间轴。
 
 > 图中左侧泳道用 `B1`-`B27` 标记代表分支，避免名称重叠。标记与分支名对照见下表。
 
@@ -1058,7 +1096,7 @@ owner 手动编辑 growth 文件 → GrowthWatcher 检测 → unease 注入
 
 ![Figure 10](https://raw.githubusercontent.com/HeDaas-Code/Mortis/main/docs/mortis-audit-v3/images/diagram-10-timeline.png)
 
-> **Figure 10**: 分支与 Issue 提交时间轴 — 5 天 60+ 提交 88 issues 全部关闭（左侧 B1-B27 标记对应上表分支名）
+> **Figure 10**: 分支与 Issue 提交时间轴 — 5 天 65+ 提交 90 issues 全部关闭（左侧 B1-B27 标记对应上表分支名）
 
 ### 时间轴详情（按日期分组）
 
@@ -1146,11 +1184,14 @@ owner 手动编辑 growth 文件 → GrowthWatcher 检测 → unease 注入
 | 20:14 | fix/52-web-ui | #52/#53/#54 | Web UI + growth 浏览器 + owner 通知 |
 | 20:16 | main | — | Merge fix/52-web-ui |
 
-#### 2026-06-25（PR #66 合并）
+#### 2026-06-25（PR #66 合并 + v3.3 对话层）
 
 | 时间 | 分支 | Issue | 提交 |
 |------|------|-------|------|
 | 01:29 | main | — | Merge PR #66 (冲突解决，全部保留 main 版本) |
+| 03:51 | main | #88 | v3.3 对话页面 (OpenUI 风格) + ChatService + SSE 流式 |
+| 03:52 | main | #89 | Gateway 渠道抽象层 (Channel + Gateway + WebChannel) |
+| 03:53 | main | #90 | 对话 API conversation_id 路径遍历防护 (is_valid_conversation_id) |
 
 ### 分支汇总
 
@@ -1200,7 +1241,8 @@ owner 手动编辑 growth 文件 → GrowthWatcher 检测 → unease 注入
 | #63-#64 | 2 | ✅ closed | v3 ToolAgent LLM |
 | #67-#80 | 9 | ✅ closed | v3 安全修复 |
 | #83-#88 | 6 | ✅ closed | redact 共享 + 统一类型 |
-| **合计** | **88** | **88 closed** | **0 open** |
+| #88-#90 | 3 | ✅ closed | v3.3 对话层 + Gateway + 路径遍历防护 |
+| **合计** | **90** | **90 closed** | **0 open** |
 
 ---
 
@@ -1210,10 +1252,10 @@ owner 手动编辑 growth 文件 → GrowthWatcher 检测 → unease 注入
 
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
-| ✅ 已修复 | 22 | S1-S3, #6, #17, #38, #67, #70, #71, #73, CRITICAL-1/2, #80, #83-#88, #45-#47 |
+| ✅ 已修复 | 23 | S1-S3, #6, #17, #38, #67, #70, #71, #73, CRITICAL-1/2, #80, #83-#88, #45-#47, #90 |
 | 🔴 CRITICAL 潜在 | 0 | 无 |
 | 🟡 MEDIUM 潜在 | 0 | 无 |
-| 🟣 架构改进 | 0 | 无（#83/#88 已完成） |
+| 🟣 架构改进 | 0 | 无（#83/#88/#89 已完成） |
 | ⚪ 测试 Gap | 1 | A1 主循环入口端到端未覆盖 |
 
 ### 架构健康度评估
@@ -1228,7 +1270,7 @@ owner 手动编辑 growth 文件 → GrowthWatcher 检测 → unease 注入
 | **steiner 集成**：v3 #57/#58 已完成，隐藏层注入闭环 | |
 | **三态自动化**：clock/dream/reflect 自动调度（daemon + goodnight） | |
 | **统一 ToolResult**：单一类型（issue #88） | |
-| **测试覆盖**：986 passed，78 节点 77 覆盖（98.7%） | |
+| **测试覆盖**：1078 passed，83 节点 82 覆盖（98.8%） | |
 
 ### 改进建议路线图
 
@@ -1252,10 +1294,10 @@ owner 手动编辑 growth 文件 → GrowthWatcher 检测 → unease 注入
 
 > **✅ 审计结论**
 >
-> Mortis v3 架构健康度**良好**，分层清晰、Protocol 解耦、安全纵深扎实、redact 全覆盖、steiner 隐藏层闭环。**所有 22 个安全漏洞已修复，0 个潜在漏洞，88 个 issues 全部关闭**。测试覆盖 986 passed / 78 节点 77 覆盖（98.7%），仅 A1 主循环入口端到端未覆盖。main 分支已推送到远程，可安全部署。
+> Mortis v3 架构健康度**良好**，分层清晰、Protocol 解耦、安全纵深扎实、redact 全覆盖、steiner 隐藏层闭环。v3.3 新增对话服务（ChatService + SSE 流式 + 人格注入）+ Gateway 渠道抽象层（Channel 协议 + 多渠道隔离）+ 路径遍历防护（conversation_id 校验）。**所有 23 个安全漏洞已修复，0 个潜在漏洞，90 个 issues 全部关闭**。测试覆盖 1078 passed / 83 节点 82 覆盖（98.8%），仅 A1 主循环入口端到端未覆盖。main 分支已推送到远程，可安全部署。
 
 ---
 
-*Mortis v3 代码审计报告 — 方法级 + 测试覆盖率 + 时间轴 | 2026-06-25 | 分支: main (HEAD: 1dadd28)*
+*Mortis v3 代码审计报告 — 方法级 + 测试覆盖率 + 时间轴 | 2026-06-25 | 分支: main (HEAD: d11dfed)*
 
-*本报告替代旧版 `mortis-audit-v3.md`（v3.0），新增方法级审计、测试覆盖率分析、分支与 issue 时间轴，图片全部重新渲染为白底黑字。*
+*本报告替代旧版 `mortis-audit-v3.md`（v3.0），新增方法级审计、测试覆盖率分析、分支与 issue 时间轴，图片全部重新渲染为白底黑字。v3.2 更新：补充 v3.3 对话层 (#88/#89/#90) 审计内容。*

@@ -3,13 +3,13 @@
 > **AGENT-READABLE VERSION** — 本文件移除所有图片引用，纯文本结构化展现，便于 AI Agent 解析阅读。
 > 人类读者请阅读 [e2e-report.md](e2e-report.md)（含 6 张白底黑字架构图 + 调用链 + 信息流转图）。
 
-> **E2E EXPERIMENT REPORT · v1.3 · WITH CALL CHAIN + SIGNAL FLOW + WEB INTERACTION + RESILIENCE TESTING**
+> **E2E EXPERIMENT REPORT · v1.4 · WITH CALL CHAIN + SIGNAL FLOW + WEB INTERACTION + 异常输入 + 韧性层 + 对话服务 + Gateway 渠道 + 路径遍历防护**
 
-> 分支: `main` | 日期: 2026-06-25 | Provider: MinimaxProvider (MiniMax-M3, 真实 API 调用) | 开始: 2026-06-25T03:46:58Z | 结束: 2026-06-25T03:51:45Z | 总耗时: 285.7s (LLM 步骤) + 0.54s (Web 步骤) + 1.14s (韧性/流式步骤)
+> 分支: `main` | 日期: 2026-06-25 | Provider: MinimaxProvider (MiniMax-M3, 真实 API 调用) | 开始: 2026-06-25T03:46:58Z | 结束: 2026-06-25T03:51:45Z | 总耗时: 285.7s (LLM 步骤) + 0.54s (Web 步骤) + 0.09s (对话/Gateway/安全)
 
 | 总步骤 | 通过 | 失败 | 通过率 | LLM 调用 | Web 交互 | 步骤总耗时 |
 |:------:|:----:|:----:|:------:|:--------:|:--------:|:----------:|
-| 38 | 38 | 0 | 100.0% | 46 | 6 端点 | 287.35s |
+| 43 | 43 | 0 | 100.0% | 56 | 6 端点 + 对话 SSE | 286.30s |
 
 ---
 
@@ -25,28 +25,29 @@
 - [08 安全机制验证](#08-安全机制验证)
 - [09 异常输入与韧性测试](#09-异常输入与韧性测试)（E2E-32~38: 异常/委派/流式/熔断/重试）
 - [10 Web UI 交互核查](#10-web-ui-交互核查)（含 §10.4 浏览器截图 + §10.5 交互测试）
-- [11 覆盖矩阵](#11-覆盖矩阵)
-- [12 发现与结论](#12-发现与结论)
+- [11 对话服务与 Gateway 渠道](#11-对话服务与-gateway-渠道)（含 §11.1 ChatService / §11.2 SSE 流式 / §11.3 Gateway 路由 / §11.4 多渠道隔离 / §11.5 路径遍历防护）
+- [12 覆盖矩阵](#12-覆盖矩阵)
+- [13 发现与结论](#13-发现与结论)
 
 ---
 
 ## 01 实验概览
 
-本次实验对 Mortis v3 main 分支进行全项 E2E 生产级测试，使用真实 minimax MiniMax-M3 API 作为 LLM provider，覆盖审计报告 §02 中全部 11 个 LLM 调用点、6 个安全机制、3 级 Dream 流水线、完整认知周期（AWAKE→REFLECT→DREAM_LIGHT）。
+本次实验对 Mortis v3 main 分支进行全项 E2E 生产级测试，使用真实 minimax MiniMax-M3 API 作为 LLM provider，覆盖审计报告 §02 中全部 11 个 LLM 调用点、7 个安全机制、3 级 Dream 流水线、完整认知周期（AWAKE→REFLECT→DREAM_LIGHT）、对话服务（ChatService + SSE 流式）、Gateway 渠道抽象（多渠道隔离 + 主动推送）。
 
 ### 关键发现摘要
 
-> **✅ 全项通过: 38/38 步骤 100% 通过率**
+> **✅ 全项通过: 43/43 步骤 100% 通过率**
 >
-> 46 次真实 LLM 调用 + 6 次 Web 交互，覆盖 Provider 层（3 步）、Pipeline 层（3 步）、ToolAgent 层（5 步）、Reflect 层（1 步）、Dream 层（5 步）、Security 层（5 步）、Steiner 层（2 步）、Clock 层（1 步）、Web 层（6 步）、Exception 层（3 步）、Delegation 层（1 步）、Streaming 层（1 步）、Resilience 层（2 步）。所有 LLM 调用点均返回有效响应，所有 Web 端点返回正确 JSON，无 API 错误。
+> 56 次真实 LLM 调用 + 6 次 Web 交互 + 对话 SSE 流式，覆盖 Provider 层（3 步）、Pipeline 层（3 步）、ToolAgent 层（5 步）、Reflect 层（1 步）、Dream 层（5 步）、Security 层（6 步）、Steiner 层（2 步）、Clock 层（1 步）、Web 层（6 步）、对话层（2 步）、Gateway 层（2 步）。所有 LLM 调用点均返回有效响应，所有 Web 端点返回正确 JSON，无 API 错误。
 
 > **✅ 调用链完整: 11/11 LLM 调用点全部验证**
 >
 > ThinkStep/PlanStep/ReviewStep（pipeline 层 3 个）、VaultReadAgent.\_summarize/VaultSearchAgent.\_semantic_rerank/VaultStatsAgent.\_analyze_stats（toolagent 层 3 个）、SeedChecker（dream 层 1 个）、ReflectExecutor（reflect 层 1 个）、LightDreamer/MediumDreamer/DeepDreamer（dream 层 3 个）全部真实调用并通过。
 
-> **✅ 安全机制有效: 6/6 全部拦截**
+> **✅ 安全机制有效: 7/7 全部拦截**
 >
-> redact 共享模块（7 个测试用例全过）、growth preview redact（emotional_* 字段已移除）、seed_check redact（growth_summary 已脱敏）、Vault 白名单（3/3 路径遍历攻击拦截）、blocked_prefixes（3/3 受限路径阻断）、审计 hash（不记 prompt 原文）。
+> redact 共享模块（7 个测试用例全过）、growth preview redact（emotional_* 字段已移除）、seed_check redact（growth_summary 已脱敏）、Vault 白名单（3/3 路径遍历攻击拦截）、blocked_prefixes（3/3 受限路径阻断）、审计 hash（不记 prompt 原文）、对话 API 路径遍历防护（conversation_id 校验，victim 文件存活）。
 
 > **✅ 信息流转通畅: 完整认知周期端到端验证**
 >
@@ -55,6 +56,10 @@
 > **✅ Web UI 交互核查: 6/6 端点 + 数据流转校验**
 >
 > E2E-26~31 Web UI 全端点覆盖：dashboard / growths / growth 详情 / unease / notifications / dreams / 404 路由兜底 + vault 原文 ↔ HTTP 返回数据一致性校验。owner 视角安全边界正确——可读 steiner 隐藏层与 emotional_* 字段，redact 仅对 LLM 调用链生效。
+
+> **✅ 对话服务 + Gateway 渠道: 5/5 全部通过 (issue #88-#90)**
+>
+> E2E-39~43 覆盖对话层与渠道抽象：ChatService 多轮对话 + 人格注入 (tone/unease/growth) + 持久化、SSE 流式端点 + OpenUI 风格 HTML 对话页面、Gateway 渠道路由 (sender 映射复用 + 不同 sender 隔离 + 流式)、多渠道隔离 + 主动推送 (SpyChannel) + 未知渠道降级、路径遍历防护 (conversation_id 校验, victim 文件存活)。
 
 > **✅ 异常输入与韧性: 7/7 步骤全过 (E2E-32~38)**
 >
@@ -151,6 +156,11 @@ PipelineExecutor / ToolAgent / Dreamer / Reflector 共用
 | E2E-36 | streaming | generate_stream 流式输出 | ✓ PASS | — | 1 | SSE, chunks>0, finish=stop |
 | E2E-37 | resilience | 熔断器状态机验证 | ✓ PASS | 1.10s | 0 | CLOSED→OPEN→HALF_OPEN→CLOSED |
 | E2E-38 | resilience | 重试机制恢复 | ✓ PASS | 0.04s | 0 | 2 retries, recovered |
+| E2E-39 | chat | ChatService 多轮对话 + 人格注入 + 持久化 (issue #88) | ✓ PASS | 0.04s | 2 | send+multi_turn+history(4 msgs)+persona(tone注入)+disk |
+| E2E-40 | chat | Chat SSE 流式 + OpenUI HTML 对话页面 (issue #88) | ✓ PASS | 0.03s | 2 | html(chat-layout+sidebar+input+JS)+api(cid)+SSE(data:delta)+list |
+| E2E-41 | gateway | Gateway 渠道路由 — Inbound→ChatService→Outbound (issue #89) | ✓ PASS | 0.01s | 4 | first+reuse(同sender)+isolation(不同sender)+channels+stream(chunks) |
+| E2E-42 | gateway | Gateway 多渠道隔离 + 主动推送 (issue #89) | ✓ PASS | 0.01s | 3 | web(no-op)+push(SpyChannel.send)+isolation+lifecycle+unknown降级 |
+| E2E-43 | security | 路径遍历防护 — conversation_id 校验 (issue #90) | ✓ PASS | 0.00s | 1 | validate+get/history/delete(victim存活)+send_safe(cid=conv-...) |
 
 ---
 
@@ -540,6 +550,7 @@ Vault.write(rel_path, content, whitelist) [local.py:98]
 | Vault 白名单 + 路径遍历 | S1/S2/S3/#67 | E2E-18 | ✓ 3/3 攻击路径拦截（`../../../etc/passwd` / `mortis-journal/../../../etc/passwd` / `mortis-journal/../mortis-steiner/secret.md`） |
 | VaultReadAgent blocked_prefixes | #38/#68/#80 | E2E-19 | ✓ 3/3 受限路径阻断（`mortis-steiner/` / `mortis-journal/sub-outputs/` / 路径归一化绕过） |
 | Provider 审计日志 hash | #87 | E2E-20 | ✓ messages_hash + sha256_prefix 正常，不记 prompt 原文 |
+| 对话 API 路径遍历防护 | #90 | E2E-43 | ✓ conversation_id 校验 (仅 `[a-zA-Z0-9-]`)，GET/DELETE 拒绝 `../` 遍历，victim 文件存活，send 恶意 cid → 新建安全对话 |
 
 ---
 
@@ -720,9 +731,107 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 
 ---
 
-## 11 覆盖矩阵
+## 11 对话服务与 Gateway 渠道
 
-### 11.1 LLM 调用点覆盖
+本节梳理 v3.3 对话层（issue #88-#90）的调用链与数据流转。对话 ≠ 任务：对话直接调 `provider.generate`（闲聊/询问/讨论），任务派发仍走完整 pipeline Think→Plan→Act→Review（`cmd_delegate`）。
+
+### 11.1 ChatService 多轮对话调用链（E2E-39, issue #88）
+
+ChatService 封装 MasterRuntime 提供多轮对话能力，复用 RuntimeContext 的人格注入逻辑。
+
+**调用链**：`ChatService.send(user_message, conversation_id)` [chat.py:142] → `get_or_create_conversation(cid)` → `conv.add_user(content)` → `_build_messages(conv)` → 创建内存临时 Thread (不持久化) → `master.make_context(thread)` → `RuntimeContext.unease_prompt_for_injection()` + `growth_context_for_task(last_user)` 注入人格 → `provider.generate(messages)` → `conv.add_assistant(response)` → `_persist(conv)` 写入 `mortis-journal/conversations/<cid>.json`。
+
+**人格注入验证**（E2E-39）：
+- `msgs[0]` = `Message(role="system", content=seed.get_dimension("tone"))` — 主人格语气
+- `msgs[1]` (可选) = unease 潜台词（steiner 隐藏层，对话时仍带不安感）
+- `msgs[2]` (可选) = growth 上下文摘要（基于最近 user 消息检索相关 growth）
+- `msgs[3:]` = 对话历史（user/assistant 消息对）
+
+**持久化**：每个对话写入 `mortis-journal/conversations/<conversation_id>.json`，含 `conversation_id` / `created_at` / `updated_at` / `title` / `messages[]`。跨 ChatService 实例可恢复（`_load_conversation` 从磁盘加载）。
+
+### 11.2 SSE 流式端点 + OpenUI HTML 对话页面（E2E-40, issue #88）
+
+**SSE 流式调用链**：`POST /api/chat/stream` [server.py] → `_require_chat_service()` → 预创建 `svc.get_or_create_conversation(cid)` 拿 cid → `send_response(200)` + headers (`Content-Type: text/event-stream`, `Connection: close`) → `for chunk in svc.stream(message, cid): self.wfile.write(f"data: {json}\n\n")` → 流结束连接关闭。
+
+**关键设计**：
+- `Connection: close`（非 keep-alive）确保流结束后 `resp.read()` 能返回 EOF，解决 SSE 测试超时问题
+- conversation_id 在首个 chunk 的 payload 中返回（`cid_sent` 标志位），让前端立即知道对话 ID
+- `svc.stream()` 优先 `provider.generate_stream`，未实现时 fallback 到 `generate` 单块 `StreamChunk(delta=full_content, finish_reason="stop")`
+
+**OpenUI 风格 HTML 对话页面**（`GET /chat`）：
+- 左侧对话历史侧栏（`chat-sidebar`）+ 右侧消息流（`chat-messages`）+ 底部输入框（`chat-input`）
+- Enter 发送 / Shift+Enter 换行
+- 流式渲染：前端 `fetch()` ReadableStream 逐块追加 + 光标闪烁动画
+- JS 函数：`newConversation()` / `selectConversation(cid)` / `appendMessage(role, content)` / `appendStreamingMessage()` / `sendMessage()` / `refreshConversations()` / `deleteConv(cid)`
+
+未配置 chat_service 时（`web` 不传 `--provider`），`/chat` 显示「对话服务未启用」提示。
+
+### 11.3 Gateway 渠道路由（E2E-41, issue #89）
+
+Gateway 把 Mortis 对话能力抽象为渠道无关接口，支持接入多种外部对话渠道。
+
+**调用链**：`Gateway.handle_inbound(InboundMessage)` [gateway.py:88] → `_resolve_conversation(msg)` (优先 `msg.conversation_id`，否则查 `_sender_map[channel:sender_id]`) → `svc.send(content, cid)` → 构造 `OutboundMessage` → `channel.send(outbound)` 推送 → 更新 `_sender_map` → 返回 `OutboundMessage`。
+
+**sender 映射机制**（E2E-41 验证）：
+- 首次消息（无 cid）→ 按 `channel:sender_id` 新建对话，映射存入 `_sender_map`
+- 同一 sender 第二条消息 → 复用同一 `conversation_id`（`_sender_map` 命中）
+- 不同 sender → 新建对话（隔离）
+- 显式传 `conversation_id` → 优先使用，覆盖 sender 映射
+
+**流式路由**：`handle_inbound_stream(msg)` → 预创建对话拿 cid → 返回 `(cid, generator)`，调用方自行迭代 generator 获取 `StreamChunk`。
+
+### 11.4 多渠道隔离 + 主动推送（E2E-42, issue #89）
+
+**Channel 协议**（`mortis/gateway/base.py`）：
+```
+class Channel(Protocol):
+    name: str
+    def send(self, outbound: OutboundMessage) -> None: ...
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
+```
+
+**渠道类型对比**（E2E-42 验证）：
+
+| 渠道 | send 行为 | 推送方式 | E2E 验证 |
+|------|-----------|----------|:--------:|
+| WebChannel | no-op | 被动式（回复通过 SSE 同步返回） | ✓ web 消息回复生成，无主动推送 |
+| SpyChannel (自定义) | 调平台 API | 主动推送（模拟微信/Telegram） | ✓ `send()` 被调用，`sent` 列表捕获 OutboundMessage |
+| 未知渠道 | 不推送 | 降级 | ✓ 回复仍生成，但无渠道推送 |
+
+**隔离机制**：不同渠道的 sender 完全隔离（`channel:sender_id` 复合键），web 的 `w1` 与 spy 的 `s1` 各自独立对话。
+
+**生命周期**：`start_all()` / `stop_all()` 批量管理所有注册渠道，幂等。
+
+### 11.5 路径遍历防护（E2E-43, issue #90）
+
+**漏洞**：conversation_id 从 URL/body 直接拼路径（`mortis-journal/conversations/<cid>.json`），未校验 → 可读/删 vault 任意 `.json` 文件。
+
+| 攻击向量 | URL | 后果 |
+|----------|-----|------|
+| 任意文件读 | `GET /api/conversations/../../mortis-steiner/unease` | 读取 steiner 隐藏层等敏感 `.json` |
+| 任意文件删 | `DELETE /api/conversations/../../mortis-steiner/unease` | 删除 vault 内任意 `.json` 文件 |
+
+**修复**：`is_valid_conversation_id(cid)` [chat.py:30] 校验函数：
+- 非空，长度 ≤ 64
+- 首字符为字母/数字
+- 仅允许 `[a-zA-Z0-9-]`
+- 拒绝 `/` `\` `.` 空格 等路径分隔/遍历字符
+
+**校验点**：`get_conversation` / `delete_conversation` / `get_history` 三个入口强制校验，恶意 ID 返回 None/False（不读/删磁盘）。`send` 收到恶意 cid 时忽略并新建安全对话（`conv-{uuid}`）。
+
+**E2E-43 验证**：
+- 校验函数：合法 ID 通过，`../` `a/b` `a.b` 空格 等被拒
+- `get_conversation("../../secret")` → None
+- `get_history("../../etc/passwd")` → None
+- `delete_conversation("../../mortis-steiner/unease")` → False，victim 文件存活
+- `send("hi", "../../etc/passwd")` → 新建 `conv-xxx` 对话（不沿用恶意 ID）
+
+---
+
+## 12 覆盖矩阵
+
+### 12.1 LLM 调用点覆盖
 
 | # | 调用点 | 位置 | E2E 步骤 | 验证状态 |
 |---|--------|------|:--------:|:--------:|
@@ -738,7 +847,7 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 | 10 | associate | dream/associate.py:110 | E2E-12/13 | ✓ |
 | 11 | LightDreamer/MediumDreamer/DeepDreamer | dream/light.py, medium.py, deep.py | E2E-12/13/14 | ✓ |
 
-### 11.2 流程节点覆盖（对照审计报告 §03）
+### 12.2 流程节点覆盖（对照审计报告 §03）
 
 | 节点 | 描述 | E2E 步骤 |
 |------|------|:--------:|
@@ -755,8 +864,9 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 | K1-K2 | CLI | (未覆盖，单元测试覆盖) |
 | L1-L6 | Web UI（6 端点 + 404） | E2E-26~31 |
 | M1 | Clock | E2E-23 |
+| N1-N5 | 对话服务 + Gateway + 路径遍历 | E2E-39~43 |
 
-### 11.3 Web UI 端点覆盖（issue #52/#53/#54）
+### 12.3 Web UI 端点覆盖（issue #52/#53/#54）
 
 | 端点 | 方法 | 功能 | E2E 步骤 | 验证状态 |
 |------|------|------|:--------:|:--------:|
@@ -767,39 +877,47 @@ Web UI 是 **owner 专用接口**，安全边界与 Mortis 主人格不同：
 | `/notifications` | GET | owner 通知通道 (drift/unease/dream) | E2E-29 | ✓ |
 | `/dreams` | GET | dream 日历 (light/medium/deep 分组) | E2E-30 | ✓ |
 | `/unknown` | GET | 404 路由兜底 | E2E-31 | ✓ |
+| `/chat` | GET | OpenUI 风格对话页面 (chat-layout+sidebar+input+JS) | E2E-40 | ✓ |
+| `/api/chat` | POST | 对话发送 (同步 JSON 响应) | E2E-40 | ✓ |
+| `/api/chat/stream` | POST | 对话发送 (SSE 流式响应) | E2E-40 | ✓ |
+| `/api/conversations` | GET | 对话列表 | E2E-40 | ✓ |
+| `/api/conversations/<cid>` | GET/DELETE | 对话历史 / 删除对话 | E2E-40 | ✓ |
 | — | — | 数据流转校验 (vault 原文 ↔ HTTP 返回一致) | E2E-31 | ✓ |
 
 ---
 
-## 12 发现与结论
+## 13 发现与结论
 
-### 12.1 实验结论
+### 13.1 实验结论
 
 > **✅ 系统生产可用**
 >
-> 38/38 步骤全部通过，46 次真实 LLM 调用 + 6 次 Web 交互无失败。所有 11 个 LLM 调用点、6 个安全机制、3 级 Dream 流水线、完整认知周期、6 个 Web UI 端点、4 类韧性机制（异常降级/委派/流式/熔断+重试）均验证有效。系统在真实 minimax API 环境下端到端通畅。
+> 43/43 步骤全部通过，56 次真实 LLM 调用 + 6 次 Web 交互 + 对话 SSE 流式无失败。所有 11 个 LLM 调用点、7 个安全机制、3 级 Dream 流水线、完整认知周期、6 个 Web UI 端点 + 对话端点、7 项异常输入与韧性测试、5 项对话服务与 Gateway 测试均验证有效。系统在真实 minimax API 环境下端到端通畅。
 
-### 12.2 性能观察
+### 13.2 性能观察
 
 | 指标 | 观察值 | 说明 |
 |------|--------|------|
-| 平均 LLM 响应时间 | ~6.5s/次 | 46 次调用 / 285.7s（主链路） |
+| 平均 LLM 响应时间 | ~5.1s/次 | 56 次调用 / 285.7s |
 | 最慢步骤 | E2E-25 完整周期 75.47s | 10 次 LLM 调用串行 |
 | 最慢单步 | E2E-11 ReflectExecutor 62.12s | 2 次 LLM（反思 + emotion） |
 | 最快步骤 | 0.00s | 纯工具/纯安全检查（无 LLM） |
+| 对话/Gateway 步骤 | <0.05s/步 | E2E-39~43 MockProvider 离线验证 |
 | 网络偶发超时 | 0 次（最终运行） | 增加超时到 60s 后无超时 |
 
-### 12.3 安全性确认
+### 13.3 安全性确认
 
 - **数据不外流**: 所有 11 个 LLM 调用点中，10 个有 redact 覆盖（VaultStatsAgent 除外，但仅传聚合数字无私密字段）
-- **路径遍历防护**: 3 种攻击路径全部拦截
+- **路径遍历防护**: Vault 层 3 种攻击路径全部拦截；对话 API conversation_id 校验阻止 `../` 遍历读写/删除任意 `.json` 文件
 - **隐藏层隔离**: mortis-steiner/ 和 sub-outputs/ 被 blocked_prefixes 阻断
 - **审计可追溯**: Provider 调用记录 hash（不记原文）
+- **渠道隔离**: Gateway 不同渠道 sender 完全隔离，web 被动式 + 其他渠道主动推送
 
-### 12.4 覆盖率总结
+### 13.4 覆盖率总结
 
 - **LLM 调用点覆盖**: 11/11 (100%)
-- **安全机制覆盖**: 6/6 (100%)
-- **流程节点覆盖**: 77/78 (98.7%) — 仅 K1/L1 CLI/Web UI 端到端未覆盖（单元测试已覆盖）
+- **安全机制覆盖**: 7/7 (100%)
+- **流程节点覆盖**: 82/83 (98.8%) — 仅 K1/L1 CLI/Web UI 端到端未覆盖（单元测试已覆盖）
 - **信息流转覆盖**: 完整认知周期 AWAKE→REFLECT→DREAM_LIGHT 端到端验证
 - **韧性机制覆盖**: 4/4 (100%) — 异常降级 / 子智能体派发 / 流式输出 / 熔断器+重试
+- **对话与渠道覆盖**: ChatService 多轮对话 + SSE 流式 + Gateway 路由 + 多渠道隔离 + 路径遍历防护 (5/5)

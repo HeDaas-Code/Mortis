@@ -865,7 +865,7 @@ def render_10_timeline():
     # 时间轴
     ax.annotate("", xy=(98, 2), xytext=(8, 2),
                 arrowprops=dict(arrowstyle="->", color="#000000", lw=1.5))
-    ax.text(50, 1, "时间轴: 2026-06-20 → 2026-06-25 (5 天, 60+ 提交, 88 issues 全部关闭)",
+    ax.text(50, 1, "时间轴: 2026-06-20 → 2026-06-25 (5 天, 65+ 提交, 90 issues 全部关闭)",
             fontsize=9, ha="center", weight="bold")
 
     plt.tight_layout()
