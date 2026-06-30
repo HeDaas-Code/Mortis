@@ -294,7 +294,7 @@ class ChatService:
         ctx = self.master.make_context(thread)
 
         msgs: list[Message] = [
-            Message(role="system", content=self.master.seed.get_dimension("tone")),
+            Message(role="system", content=self.master.seed.to_prompt()),
         ]
         # unease 潜台词
         unease_text = ctx.unease_prompt_for_injection()
