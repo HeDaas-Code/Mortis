@@ -141,7 +141,7 @@ class RuntimeContext:
         """
         from mortis.provider import Message
         msgs: list[Message] = [
-            Message(role="system", content=self.seed.get_dimension("tone")),
+            Message(role="system", content=self.seed.to_prompt()),
         ]
         # issue #57: 注入 unease 潜台词（steiner 隐藏层）
         unease_text = self.unease_prompt_for_injection()

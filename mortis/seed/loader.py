@@ -40,6 +40,18 @@ class Seed:
             lines.append(f"- {d}: {first}")
         return "\n".join(lines)
 
+    def to_prompt(self) -> str:
+        """完整人格 system prompt — 七维度全部注入 LLM (issue #89)。
+
+        之前只注入 tone 一维 (7 个字), LLM 不知道自己是谁。
+        现在注入完整 seed, 让 LLM 有身份/价值观/能动性/关系观等完整人格锚点。
+        """
+        lines = []
+        for d in SEVEN_DIMENSIONS:
+            text = getattr(self, d).strip()
+            lines.append(f"## {d.capitalize()}\n{text}")
+        return "\n\n".join(lines)
+
     def is_complete(self) -> bool:
         """种子完整性检查 — 七维度任一为空字符串 = 不完整。"""
         return all(getattr(self, d).strip() for d in SEVEN_DIMENSIONS)

@@ -11,6 +11,8 @@ import urllib.error
 import urllib.request
 from typing import Any, Generator
 
+import re
+
 from .audit import messages_hash, sha256_prefix
 from .base import Message, StreamChunk
 
@@ -18,6 +20,20 @@ _logger = logging.getLogger(__name__)
 
 MINIMAX_DEFAULT_BASE_URL = "https://api.minimax.chat/v1"
 MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
+
+# MiniMax-M3 会输出 <think>...</think> 推理过程, 需要从最终输出中剥离
+_THINK_PATTERN = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def strip_think_tags(text: str) -> str:
+    """剥离 MiniMax-M3 的 <think>...</think> 推理过程标签。
+
+    think 块是模型的内部推理, 不应展示给用户。
+    剥离后清理多余空白, 保持输出干净。
+    """
+    cleaned = _THINK_PATTERN.sub("", text)
+    # 清理剥离后可能残留的首尾空白
+    return cleaned.strip() if cleaned != text else text
 
 
 class MinimaxAuthError(RuntimeError):
@@ -117,6 +133,11 @@ class MinimaxProvider:
             )
             raise MinimaxAPIError(f"minimax API network error: {e}") from e
         message = self._extract_message(payload)
+        # 剥离 <think> 推理标签 (issue #89)
+        message = Message(
+            role=message.role,
+            content=strip_think_tags(message.content),
+        )
         # issue #87: 成功路径审计 log — 含 prompt/response hash + 耗时, 不含原文
         _logger.debug(
             "[provider] method=generate prompt_hash=%s resp_hash=%s elapsed=%.3fs",
@@ -144,6 +165,7 @@ class MinimaxProvider:
         content = self.generate(
             messages, temperature=temperature, max_tokens=max_tokens
         ).content
+        # generate() 已剥离 <think> 标签, 这里直接用
         # issue #87: 成功路径审计 log — 含 prompt/response hash + 耗时, 不含原文
         _logger.debug(
             "[provider] method=generate_text prompt_hash=%s resp_hash=%s elapsed=%.3fs",
@@ -187,6 +209,10 @@ class MinimaxProvider:
         )
         try:
             resp = urllib.request.urlopen(req, timeout=self._timeout)
+            # 流式 think 标签过滤状态机 (issue #89)
+            # MiniMax-M3 流式输出可能包含 <think>...</think>, 需要跨块过滤
+            in_think = False
+            buffer = ""
             for line in resp:
                 line = line.decode("utf-8").strip()
                 if not line or not line.startswith("data:"):
@@ -200,8 +226,59 @@ class MinimaxProvider:
                     choice = chunk.get("choices", [{}])[0]
                     delta = choice.get("delta", {}).get("content", "")
                     finish = choice.get("finish_reason")
-                    if delta or finish:
-                        yield StreamChunk(delta=delta, finish_reason=finish)
+                    if not delta and not finish:
+                        continue
+
+                    # think 标签过滤: 逐块处理, 维护 in_think 状态
+                    if delta:
+                        buffer += delta
+                        output = ""
+                        while buffer:
+                            if in_think:
+                                # 在 think 块内, 寻找 </think>
+                                idx = buffer.find("</think>")
+                                if idx != -1:
+                                    # 找到闭合标签, 跳过 think 内容
+                                    buffer = buffer[idx + len("</think>"):]
+                                    in_think = False
+                                    # 跳过闭合后的换行
+                                    if buffer.startswith("\n"):
+                                        buffer = buffer[1:]
+                                else:
+                                    # think 块还没闭合, 全部留在 buffer 里
+                                    buffer = ""
+                                    break
+                            else:
+                                # 在 think 块外, 寻找 <think>
+                                idx = buffer.find("<think>")
+                                if idx != -1:
+                                    # 输出 <think> 之前的内容
+                                    output += buffer[:idx]
+                                    buffer = buffer[idx + len("<think>"):]
+                                    in_think = True
+                                    # 跳过 <think> 后的换行
+                                    if buffer.startswith("\n"):
+                                        buffer = buffer[1:]
+                                else:
+                                    # 检查 buffer 末尾是否有不完整的 <think 标签
+                                    # 避免把 "<t" 当普通文本输出
+                                    partial = ""
+                                    for i in range(min(len(buffer), 6), 0, -1):
+                                        if "<think>"[:i] == buffer[-i:]:
+                                            partial = buffer[-i:]
+                                            break
+                                    if partial:
+                                        output += buffer[:-len(partial)]
+                                        buffer = partial
+                                    else:
+                                        output += buffer
+                                        buffer = ""
+                                    break
+                        if output:
+                            yield StreamChunk(delta=output, finish_reason=None)
+                    if finish:
+                        # 流结束时, 如果 buffer 里还有内容 (think 块未闭合), 丢弃
+                        yield StreamChunk(delta="", finish_reason=finish)
                 except (json.JSONDecodeError, KeyError, IndexError):
                     continue
             resp.close()
