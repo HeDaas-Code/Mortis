@@ -65,8 +65,8 @@ class MinimaxProvider:
 
     def _messages_to_openai_format(
         self, messages: list[Message]
-    ) -> list[dict[str, str]]:
-        result = []
+    ) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
         for m in messages:
             if m.role == "tool":
                 result.append({
@@ -74,6 +74,26 @@ class MinimaxProvider:
                     "content": m.content,
                     "tool_call_id": m.tool_call_id,
                 })
+            elif m.tool_calls:
+                # issue #93: assistant 消息携带 tool_calls (function calling 多轮)
+                # OpenAI 要求把 tool_calls 原样回传, 否则 tool 结果消息会被拒收。
+                # 注意: 内部存储时 arguments 已 parse 为 dict, 回传 API 时需转回 JSON 字符串。
+                serializable_calls: list[dict[str, Any]] = []
+                for tc in m.tool_calls:
+                    tc_copy: dict[str, Any] = dict(tc)
+                    func = dict(tc_copy.get("function", {}) or {})
+                    args = func.get("arguments")
+                    if isinstance(args, dict):
+                        func["arguments"] = json.dumps(args, ensure_ascii=False)
+                    tc_copy["function"] = func
+                    serializable_calls.append(tc_copy)
+                entry: dict[str, Any] = {
+                    "role": m.role,
+                    "tool_calls": serializable_calls,
+                }
+                if m.content:
+                    entry["content"] = m.content
+                result.append(entry)
             elif m.name:
                 result.append({
                     "role": m.role,
@@ -90,6 +110,7 @@ class MinimaxProvider:
         *,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        tools: list[dict] | None = None,
     ) -> Message:
         if not self._api_key:
             raise MinimaxAuthError(
@@ -97,7 +118,7 @@ class MinimaxProvider:
             )
         # issue #87: 审计 hash (前 16 位), 不记 prompt 原文
         prompt_hash = messages_hash(messages)
-        body = self._build_body(messages, temperature, max_tokens)
+        body = self._build_body(messages, temperature, max_tokens, tools)
         req = urllib.request.Request(
             url=f"{self._base_url}/chat/completions",
             data=json.dumps(body).encode("utf-8"),
@@ -134,16 +155,22 @@ class MinimaxProvider:
             raise MinimaxAPIError(f"minimax API network error: {e}") from e
         message = self._extract_message(payload)
         # 剥离 <think> 推理标签 (issue #89)
+        cleaned_content = strip_think_tags(message.content)
+        # issue #93: 解析响应里的 tool_calls (OpenAI function calling 格式)
+        tool_calls = self._extract_tool_calls(payload)
         message = Message(
             role=message.role,
-            content=strip_think_tags(message.content),
+            content=cleaned_content,
+            tool_calls=tool_calls,
         )
         # issue #87: 成功路径审计 log — 含 prompt/response hash + 耗时, 不含原文
         _logger.debug(
-            "[provider] method=generate prompt_hash=%s resp_hash=%s elapsed=%.3fs",
+            "[provider] method=generate prompt_hash=%s resp_hash=%s elapsed=%.3fs"
+            " tool_calls=%d",
             prompt_hash,
             sha256_prefix(message.content),
             time.monotonic() - start,
+            len(tool_calls) if tool_calls else 0,
         )
         return message
 
@@ -299,10 +326,15 @@ class MinimaxProvider:
         *,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        tools: list[dict] | None = None,
     ) -> Message:
-        """异步 generate — 用 asyncio.to_thread 包装同步 HTTP 调用 (issue #46)。"""
+        """异步 generate — 用 asyncio.to_thread 包装同步 HTTP 调用 (issue #46)。
+
+        issue #93: 透传 tools 参数 (function calling) 到同步 generate。
+        """
         return await asyncio.to_thread(
-            self.generate, messages, temperature=temperature, max_tokens=max_tokens
+            self.generate, messages,
+            temperature=temperature, max_tokens=max_tokens, tools=tools,
         )
 
     async def async_generate_text(
@@ -327,6 +359,7 @@ class MinimaxProvider:
         messages: list[Message],
         temperature: float,
         max_tokens: int | None,
+        tools: list[dict] | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "model": self._model,
@@ -335,6 +368,9 @@ class MinimaxProvider:
         }
         if max_tokens is not None:
             body["max_tokens"] = max_tokens
+        # issue #93: 透传 tools (OpenAI function calling schema) — 让 LLM 知道有哪些工具可用
+        if tools:
+            body["tools"] = tools
         return body
 
     def _extract_message(self, payload: dict[str, Any]) -> Message:
@@ -346,3 +382,48 @@ class MinimaxProvider:
             )
         except (KeyError, IndexError, TypeError) as e:
             raise MinimaxAPIError(f"unexpected minimax response shape: {e}") from e
+
+    def _extract_tool_calls(self, payload: dict[str, Any]) -> list[dict] | None:
+        """从 OpenAI 兼容响应里解析 tool_calls (issue #93)。
+
+        响应格式 (OpenAI / MiniMax-M3 兼容)::
+
+            {"choices": [{"message": {"role": "assistant", "content": "",
+              "tool_calls": [{"id": "call_xxx", "type": "function",
+                "function": {"name": "vault:read", "arguments": "{\\"path\\": \\"x\\"}"}}]}}]}
+
+        Args:
+            payload: 完整 API 响应 dict。
+
+        Returns:
+            list[dict] — 每个 dict 含 id/type/function{name,arguments(arguments 已 parse 为 dict)}。
+            无 tool_calls 或解析失败时返回 None。
+        """
+        try:
+            choice = payload["choices"][0]
+            raw_calls = choice.get("message", {}).get("tool_calls") or choice.get("tool_calls")
+            if not raw_calls:
+                return None
+            parsed: list[dict] = []
+            for tc in raw_calls:
+                if not isinstance(tc, dict):
+                    continue
+                func = tc.get("function", {}) or {}
+                args_raw = func.get("arguments", "")
+                # arguments 是 JSON 字符串, parse 成 dict; parse 失败保留原字符串
+                try:
+                    args = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
+                except (json.JSONDecodeError, TypeError):
+                    args = {"_raw": args_raw}
+                parsed.append({
+                    "id": tc.get("id", ""),
+                    "type": tc.get("type", "function"),
+                    "function": {
+                        "name": func.get("name", ""),
+                        "arguments": args,
+                    },
+                })
+            return parsed if parsed else None
+        except (KeyError, IndexError, TypeError) as e:
+            _logger.debug("extract tool_calls: no tool_calls in response (%s)", e)
+            return None

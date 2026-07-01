@@ -85,17 +85,32 @@ class Step(ABC):
         messages: list[Message],
         tools: ToolRegistry | None = None,
     ) -> tuple[Message, list[ToolResult]]:
-        """调用 provider，返回 (回复消息, 工具结果)。"""
-        resp = self.ctx.provider.generate(messages)
+        """调用 provider，返回 (回复消息, 工具结果)。
+
+        issue #93: 当传入 ToolRegistry 时, 把 OpenAI function calling schema
+        透传给 ``provider.generate(tools=...)``, 让 LLM 自发决定是否调工具;
+        并把响应里的 ``tool_calls`` 解析出来执行, 执行后回灌消息历史再生成最终回复。
+
+        OpenAI 格式要求: assistant 消息(含 tool_calls) 必须在 tool 结果消息之前,
+        否则 API 会拒收。本方法在执行工具前先把 assistant resp 追加到 messages。
+        """
+        tool_schemas = tools.to_openai_schemas() if tools is not None else None
+        # issue #93: tools=None 时不传 tools kwarg, 保持对老 provider 的向后兼容
+        gen_kwargs: dict[str, Any] = {}
+        if tool_schemas:
+            gen_kwargs["tools"] = tool_schemas
+        resp = self.ctx.provider.generate(messages, **gen_kwargs)
         tool_results: list[ToolResult] = []
 
-        # 优先：从响应中提取 function_call（原生 function calling）
+        # 优先：从响应中提取 tool_calls（原生 function calling, issue #93）
         tool_calls = self._extract_function_calls(resp)
         if not tool_calls:
-            # 降级：TextCall 解析
+            # 降级：TextCall 解析（老式 [TOOL: ns:action {...}] 文本格式）
             tool_calls = parse_tool_calls_from_text(resp.content)
 
         if tool_calls and tools:
+            # OpenAI 要求: assistant 消息(含 tool_calls) 必须在 tool 结果之前
+            messages.append(resp)
             for tc in tool_calls:
                 tr = tools.execute(tc.name, tc.arguments)
                 tool_results.append({
@@ -111,20 +126,43 @@ class Step(ABC):
                     content=tr.content,
                     tool_call_id=tc.id,
                 ))
-            # 再次调用 provider（看工具结果后再回复）
-            resp = self.ctx.provider.generate(messages)
+            # 再次调用 provider（看工具结果后再回复）；仍透传 tools 让 LLM 可继续调用
+            resp = self.ctx.provider.generate(messages, **gen_kwargs)
 
         return resp, tool_results
 
     def _extract_function_calls(self, msg: Message) -> list[ToolCall]:
-        """从 provider 响应中提取 function_call（OpenAI 格式）。
+        """从 provider 响应中提取 tool_calls（OpenAI function calling 格式, issue #93）。
 
-        默认返回空列表（走 TextCall 降级）。
-        子类可 override 此方法以支持原生 function calling。
+        provider（MinimaxProvider 等）把响应里的 tool_calls 解析到 ``msg.tool_calls``,
+        字段是 OpenAI 兼容格式::
+
+            [{"id": "...", "type": "function",
+              "function": {"name": "...", "arguments": {...}}}]
+
+        本方法将其映射为内部 ``ToolCall`` 列表。若 ``msg.tool_calls`` 为空则返回
+        空列表, 调用方会继续走 TextCall 文本降级解析。
         """
-        # MinimaxProvider 等支持 function calling 的 provider
-        # 可在子类中 override 此方法解析 choice.message.tool_calls
-        return []
+        raw = msg.tool_calls
+        if not raw:
+            return []
+        calls: list[ToolCall] = []
+        for i, tc in enumerate(raw):
+            if not isinstance(tc, dict):
+                continue
+            func = tc.get("function", {}) or {}
+            name = func.get("name", "")
+            if not name:
+                continue
+            args = func.get("arguments", {})
+            if not isinstance(args, dict):
+                args = {}
+            calls.append(ToolCall(
+                id=tc.get("id") or f"tc-{i}",
+                name=name,
+                arguments=args,
+            ))
+        return calls
 
 
 # ----- 步骤类型实现 -----

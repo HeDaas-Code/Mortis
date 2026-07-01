@@ -21,11 +21,22 @@ class MockProvider:
     issue #87: generate / generate_text 均产出审计 log (DEBUG),
     含 prompt/response 的 SHA256 前 16 位 + 耗时, **不记原文** —
     与 MinimaxProvider 保持一致, 便于本地/CI 也能验证审计链路。
+
+    issue #93: tool_calls_responses 可选 — 让 mock 模拟 function calling
+    响应 (Message.tool_calls 字段), 用于测试 ActStep._extract_function_calls。
     """
 
-    def __init__(self, responses: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        responses: list[str] | None = None,
+        *,
+        tool_calls_responses: list[list[dict] | None] | None = None,
+    ) -> None:
         self._responses = responses
         self._call_count = 0
+        # issue #93: function calling mock — 每次生成可附带 tool_calls
+        self._tool_calls_responses = tool_calls_responses
+        self._tool_call_count = 0
 
     def generate(
         self,
@@ -33,14 +44,25 @@ class MockProvider:
         *,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        tools: list[dict] | None = None,
     ) -> Message:
         # issue #87: 审计 hash (前 16 位), 不记 prompt 原文
         prompt_hash = messages_hash(messages)
         start = time.monotonic()
+        # issue #93: 测试可注入 _tool_calls_responses 让 mock 模拟 function calling 响应
+        tool_calls = None
+        if self._tool_calls_responses:
+            idx = self._tool_call_count % len(self._tool_calls_responses)
+            self._tool_call_count += 1
+            tool_calls = self._tool_calls_responses[idx]
         if self._responses:
             idx = self._call_count % len(self._responses)
             self._call_count += 1
-            message = Message(role="assistant", content=self._responses[idx])
+            message = Message(
+                role="assistant",
+                content=self._responses[idx],
+                tool_calls=tool_calls,
+            )
         else:
             snippet = ""
             for m in reversed(messages):
@@ -49,13 +71,19 @@ class MockProvider:
                     lines = text.splitlines()
                     snippet = lines[0][:30] if lines else "empty"
                     break
-            message = Message(role="assistant", content=f"[mock:{snippet}]")
+            message = Message(
+                role="assistant",
+                content=f"[mock:{snippet}]",
+                tool_calls=tool_calls,
+            )
         # issue #87: 审计 log — 含 prompt/response hash + 耗时, 不含原文
         _logger.debug(
-            "[provider] method=generate prompt_hash=%s resp_hash=%s elapsed=%.3fs",
+            "[provider] method=generate prompt_hash=%s resp_hash=%s elapsed=%.3fs"
+            " tool_calls=%d",
             prompt_hash,
             sha256_prefix(message.content),
             time.monotonic() - start,
+            len(tool_calls) if tool_calls else 0,
         )
         return message
 
@@ -113,11 +141,17 @@ class MockProvider:
         *,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        tools: list[dict] | None = None,
     ) -> Message:
-        """异步 generate — mock 即时, 直接调同步方法 (issue #46)。"""
-        return self.generate(
-            messages, temperature=temperature, max_tokens=max_tokens
-        )
+        """异步 generate — mock 即时, 直接调同步方法 (issue #46)。
+
+        issue #93: 透传 tools (function calling); tools=None 时不传, 保持对
+        老式 generate 签名(含子类 override)的向后兼容。
+        """
+        kwargs = {"temperature": temperature, "max_tokens": max_tokens}
+        if tools is not None:
+            kwargs["tools"] = tools
+        return self.generate(messages, **kwargs)
 
     async def async_generate_text(
         self,

@@ -14,6 +14,9 @@ class Message:
     content: str
     name: str | None = None  # for tool role
     tool_call_id: str | None = None  # for tool role
+    # issue #93: assistant 消息可携带 tool_calls (OpenAI function calling 响应格式)
+    # provider 解析响应里的 tool_calls 后填到此字段, ActStep._extract_function_calls 直接读。
+    tool_calls: list[dict] | None = None
 
 
 @dataclass
@@ -50,6 +53,7 @@ class LLMProviderProtocol(Protocol):
         *,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        tools: list[dict] | None = None,
     ) -> Message:
         """给定消息历史，生成下一条回复。
 
@@ -57,6 +61,9 @@ class LLMProviderProtocol(Protocol):
             messages: 消息列表（包含 system/user/assistant/tool）。
             temperature: 采样温度。
             max_tokens: 最大 token 数。
+            tools: 可选, OpenAI function calling 格式的工具 schema 列表 (issue #93)。
+                provider 实现应将其透传到 API body, 让 LLM 自发决定是否调工具,
+                并把响应里的 tool_calls 解析到 Message.tool_calls 字段。
 
         Returns:
             模型生成的回复消息。
@@ -83,8 +90,12 @@ class LLMProviderProtocol(Protocol):
         *,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        tools: list[dict] | None = None,
     ) -> Message:
-        """异步 generate。可选实现; 默认 fallback: 在 executor 中跑同步 generate。"""
+        """异步 generate。可选实现; 默认 fallback: 在 executor 中跑同步 generate。
+
+        issue #93: 透传 tools 参数 (function calling), 与同步 generate 对齐。
+        """
         ...
 
     async def async_generate_text(

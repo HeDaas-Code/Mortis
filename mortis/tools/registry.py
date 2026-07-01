@@ -45,17 +45,46 @@ class ToolRegistry:
 
     def tool_schemas(self) -> list[dict[str, Any]]:
         """生成给 LLM 看的工具 schema 列表。"""
-        return [
-            {
+        return self.to_openai_schemas()
+
+    def to_openai_schemas(self) -> list[dict[str, Any]]:
+        """生成 OpenAI function calling 兼容的 tools schema 列表 (issue #93)。
+
+        格式遵循 OpenAI / MiniMax 等兼容 API 的 ``tools`` 字段规范::
+
+            [
+              {
+                "type": "function",
+                "function": {
+                  "name": "<tool_name>",
+                  "description": "<tool_description>",
+                  "parameters": {"type": "object", "properties": {...}, ...}
+                }
+              },
+              ...
+            ]
+
+        鲁棒性处理:
+        - ``parameters`` 为空时填一个最小合法 object schema, 避免 API 拒收。
+        - 跳过没有 name 的工具 (防御性)。
+        """
+        schemas: list[dict[str, Any]] = []
+        for t in self._tools.values():
+            if not getattr(t, "name", None):
+                continue
+            params = getattr(t, "input_schema", None) or {}
+            if not isinstance(params, dict) or not params:
+                # OpenAI 要求 parameters 是 object schema; 空则给最小合法占位
+                params = {"type": "object", "properties": {}}
+            schemas.append({
                 "type": "function",
                 "function": {
                     "name": t.name,
-                    "description": t.description,
-                    "parameters": t.input_schema,
+                    "description": getattr(t, "description", "") or "",
+                    "parameters": params,
                 },
-            }
-            for t in self._tools.values()
-        ]
+            })
+        return schemas
 
 
 # 全局默认注册表生成器（工具实例来自 vault/runtime，需要外部组装）

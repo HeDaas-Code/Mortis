@@ -184,11 +184,12 @@ class RetryProvider:
 
     # ---- LLMProviderProtocol 实现 ----
 
-    def generate(self, messages, *, temperature=0.7, max_tokens=None):
-        return self._retry(
-            self._inner.generate, messages,
-            temperature=temperature, max_tokens=max_tokens,
-        )
+    def generate(self, messages, *, temperature=0.7, max_tokens=None, tools=None):
+        # issue #93: 透传 tools (function calling); tools=None 时不传, 保持向后兼容
+        kwargs = {"temperature": temperature, "max_tokens": max_tokens}
+        if tools is not None:
+            kwargs["tools"] = tools
+        return self._retry(self._inner.generate, messages, **kwargs)
 
     def generate_text(self, prompt, system="", *, temperature=0.7, max_tokens=None):
         return self._retry(
@@ -196,11 +197,12 @@ class RetryProvider:
             temperature=temperature, max_tokens=max_tokens,
         )
 
-    async def async_generate(self, messages, *, temperature=0.7, max_tokens=None):
-        return await self._async_retry(
-            self._inner.async_generate, messages,
-            temperature=temperature, max_tokens=max_tokens,
-        )
+    async def async_generate(self, messages, *, temperature=0.7, max_tokens=None, tools=None):
+        # issue #93: 透传 tools (function calling); tools=None 时不传, 保持向后兼容
+        kwargs = {"temperature": temperature, "max_tokens": max_tokens}
+        if tools is not None:
+            kwargs["tools"] = tools
+        return await self._async_retry(self._inner.async_generate, messages, **kwargs)
 
     async def async_generate_text(self, prompt, system="", *, temperature=0.7, max_tokens=None):
         return await self._async_retry(
@@ -322,11 +324,12 @@ class CircuitBreakerProvider:
 
     # ---- LLMProviderProtocol 实现 ----
 
-    def generate(self, messages, *, temperature=0.7, max_tokens=None):
-        return self._call(
-            self._inner.generate, messages,
-            temperature=temperature, max_tokens=max_tokens,
-        )
+    def generate(self, messages, *, temperature=0.7, max_tokens=None, tools=None):
+        # issue #93: 透传 tools (function calling); tools=None 时不传, 保持向后兼容
+        kwargs = {"temperature": temperature, "max_tokens": max_tokens}
+        if tools is not None:
+            kwargs["tools"] = tools
+        return self._call(self._inner.generate, messages, **kwargs)
 
     def generate_text(self, prompt, system="", *, temperature=0.7, max_tokens=None):
         return self._call(
@@ -334,11 +337,12 @@ class CircuitBreakerProvider:
             temperature=temperature, max_tokens=max_tokens,
         )
 
-    async def async_generate(self, messages, *, temperature=0.7, max_tokens=None):
-        return await self._async_call(
-            self._inner.async_generate, messages,
-            temperature=temperature, max_tokens=max_tokens,
-        )
+    async def async_generate(self, messages, *, temperature=0.7, max_tokens=None, tools=None):
+        # issue #93: 透传 tools (function calling); tools=None 时不传, 保持向后兼容
+        kwargs = {"temperature": temperature, "max_tokens": max_tokens}
+        if tools is not None:
+            kwargs["tools"] = tools
+        return await self._async_call(self._inner.async_generate, messages, **kwargs)
 
     async def async_generate_text(self, prompt, system="", *, temperature=0.7, max_tokens=None):
         return await self._async_call(
@@ -400,11 +404,15 @@ class FallbackProvider:
 
     # ---- LLMProviderProtocol 实现 ----
 
-    def generate(self, messages, *, temperature=0.7, max_tokens=None):
+    def generate(self, messages, *, temperature=0.7, max_tokens=None, tools=None):
+        # issue #93: 透传 tools (function calling); tools=None 时不传, 保持向后兼容
+        kwargs = {"temperature": temperature, "max_tokens": max_tokens}
+        if tools is not None:
+            kwargs["tools"] = tools
         return self._call_with_fallback(
             "generate",
             self._primary.generate, self._fallback.generate,
-            messages, temperature=temperature, max_tokens=max_tokens,
+            messages, **kwargs,
         )
 
     def generate_text(self, prompt, system="", *, temperature=0.7, max_tokens=None):
@@ -414,11 +422,15 @@ class FallbackProvider:
             prompt, system=system, temperature=temperature, max_tokens=max_tokens,
         )
 
-    async def async_generate(self, messages, *, temperature=0.7, max_tokens=None):
+    async def async_generate(self, messages, *, temperature=0.7, max_tokens=None, tools=None):
+        # issue #93: 透传 tools (function calling); tools=None 时不传, 保持向后兼容
+        kwargs = {"temperature": temperature, "max_tokens": max_tokens}
+        if tools is not None:
+            kwargs["tools"] = tools
         return await self._async_call_with_fallback(
             "async_generate",
             self._primary.async_generate, self._fallback.async_generate,
-            messages, temperature=temperature, max_tokens=max_tokens,
+            messages, **kwargs,
         )
 
     async def async_generate_text(self, prompt, system="", *, temperature=0.7, max_tokens=None):
