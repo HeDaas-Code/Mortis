@@ -1,4 +1,4 @@
-"""Test mortis.dream.light — LightDreamer 4 phase 完整流程。issue #22 验收 #3。"""
+"""Test mortis.dream.light — LightDreamer 5 phase 完整流程。issue #22/#94 验收。"""
 
 from __future__ import annotations
 
@@ -69,15 +69,18 @@ class TestRunEndToEnd:
     """完整 run → 写盘 → 读回 流程。"""
 
     def test_run_with_no_sessions(self, tmp_path: Path) -> None:
-        """无 session(vault 里没 sessions 目录) → 4 phase 全 ok,no_sessions 标。"""
+        """无 session(vault 里没 sessions 目录) → 5 phase 全 ok,no_sessions 标。
+
+        issue #94: Light 追加 EXPRESSION_DISTILL phase (无 stats 时 ok=True 跳过)。
+        """
         vault = Vault(tmp_path)
         provider = MockProvider()  # 不会真调 LLM(没进 RECALL)
         dreamer = LightDreamer(vault, provider)
         result = dreamer.run()
 
-        assert result.ok is True  # 4 phase 都标 ok=True
+        assert result.ok is True  # 5 phase 都标 ok=True
         assert result.level == DreamLevel.LIGHT
-        assert len(result.traces) == 4
+        assert len(result.traces) == 5
         # 没有 candidate
         assert result.candidates == []
         assert result.conflicts == []
@@ -85,7 +88,10 @@ class TestRunEndToEnd:
         assert vault.list_growths() == []
 
     def test_run_with_sessions_writes_candidate(self, vault_dir: Path) -> None:
-        """有 session → 4 phase → 写一个 confidence=0.3 growth 候选。"""
+        """有 session → 5 phase → 写一个 confidence=0.3 growth 候选。
+
+        issue #94: 第 5 phase (EXPRESSION_DISTILL) 无 stats 时跳过, 不写 growth。
+        """
         vault = Vault(vault_dir)
         provider = _make_provider(
             emotion_responses=['{"valence": 0.5, "arousal": 0.5}'] * 2,

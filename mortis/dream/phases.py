@@ -12,11 +12,12 @@ from enum import Enum
 
 
 class DreamPhase(str, Enum):
-    """梦境流水线阶段(RFC-001 §四 + §十)。
+    """梦境流水线阶段(RFC-001 §四 + §十 + issue #94)。
 
-    顺序: RECALL → ASSOCIATE → SIMULATE → CRYSTALLIZE → RECONCILE → ERODE → SEED_CHECK
-    - Light: 跑 1-4 (RECALL → ASSOCIATE → SIMULATE → CRYSTALLIZE)
-      注: issue #22 Light 简化为 RECALL → ASSOCIATE → CRYSTALLIZE → RECONCILE (跳过 SIMULATE)
+    顺序: RECALL → ASSOCIATE → SIMULATE → CRYSTALLIZE → RECONCILE → ERODE → SEED_CHECK → EXPRESSION_DISTILL
+    - Light: RECALL → ASSOCIATE → CRYSTALLIZE → RECONCILE → EXPRESSION_DISTILL
+      注: issue #22 Light 简化为 RECALL → ASSOCIATE → CRYSTALLIZE → RECONCILE (跳过 SIMULATE);
+      issue #94 追加 EXPRESSION_DISTILL (从对话统计提炼表达模式 → tone growth)。
     - Medium: 跑 1-5 (含 RECONCILE)
     - Deep: 跑 1-7 (全跑)
     """
@@ -28,6 +29,8 @@ class DreamPhase(str, Enum):
     RECONCILE = "reconcile"
     ERODE = "erode"
     SEED_CHECK = "seed_check"
+    # issue #94: 表达方式学习 — 从对话统计提炼 tone growth
+    EXPRESSION_DISTILL = "expression_distill"
 
 
 class DreamLevel(str, Enum):
@@ -38,13 +41,15 @@ class DreamLevel(str, Enum):
     DEEP = "deep"        # 每月
 
 
-# 每个 level 跑的 phase 顺序(Light 4 phase,Medium 5 phase,Deep 7 phase)
+# 每个 level 跑的 phase 顺序(Light 5 phase,Medium 5 phase,Deep 7 phase)
 PHASES_BY_LEVEL: dict[DreamLevel, list[DreamPhase]] = {
+    # issue #94: Light 追加 EXPRESSION_DISTILL (从对话统计提炼表达模式 → tone growth)
     DreamLevel.LIGHT: [
         DreamPhase.RECALL,
         DreamPhase.ASSOCIATE,
         DreamPhase.CRYSTALLIZE,
         DreamPhase.RECONCILE,
+        DreamPhase.EXPRESSION_DISTILL,
     ],
     DreamLevel.MEDIUM: [
         DreamPhase.RECALL,

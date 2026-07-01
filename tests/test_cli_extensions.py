@@ -143,7 +143,10 @@ class TestCmdDream:
     """dream --level light/medium 命令端到端执行。"""
 
     def test_dream_light_with_sessions(self, tmp_path: Path) -> None:
-        """dream --level light 有 session → 跑完 4 phase → 写 growth 候选。"""
+        """dream --level light 有 session → 跑完 5 phase → 写 growth 候选。
+
+        issue #94: Light 追加 EXPRESSION_DISTILL phase (无 stats 时跳过, 不写 growth)。
+        """
         _make_vault_with_sessions(tmp_path, n=2)
         rc = main([
             "dream", "--level", "light",
@@ -159,7 +162,7 @@ class TestCmdDream:
         assert growths[0].startswith("mortis-growth/")
 
     def test_dream_light_no_sessions(self, tmp_path: Path) -> None:
-        """dream --level light 无 session → 4 phase 全 ok,不写 growth。"""
+        """dream --level light 无 session → 5 phase 全 ok,不写 growth。"""
         # tmp_path 是空 vault (Vault.__post_init__ 会建 journal 目录)
         Vault(tmp_path)
         rc = main([

@@ -88,6 +88,9 @@ class RuntimeContext:
 
         Returns:
             格式化后的 growth 上下文字符串，如果无相关 growth 则返回空字符串。
+
+        issue #94: 排除 expression growth — 它们走 ``expression_patterns_prompt``
+        单独注入完整 body, 避免在 growth 段被截断为 preview 行后重复出现。
         """
         if not task:
             return ""
@@ -103,7 +106,60 @@ class RuntimeContext:
         if not growths:
             return ""
 
+        # issue #94: 排除 expression growth (它们走 expression_patterns_prompt 单独注入)
+        from mortis.expression.distill import is_expression_growth
+        growths = [g for g in growths if not is_expression_growth(g.id)]
+        if not growths:
+            return ""
+
         return growth_system_prompt(growths)
+
+    # ----- expression patterns 注入 (issue #94 第三步) -----
+
+    def expression_patterns_prompt(self, max_items: int = 3) -> str:
+        """扫描 ``mortis-growth/tone/expression-*.md``, 注入 ``## Expression Patterns (learned)`` 段。
+
+        issue #94 第三步: dream 的 EXPRESSION_DISTILL phase 产出 expression growth
+        (id 形如 ``expression-YYYY-MM-DD``, 同天覆盖), 这里读取它们的完整 body
+        注入 system prompt, 让 Mortis 回复风格随用户偏好演化。
+
+        排序: 按 id (含日期) 降序 — 最新 dream 产出的模式在前。取最近 ``max_items`` 条。
+
+        静默失败 — 任何异常返回空串 (expression 是增强层, 不应干扰主流程)。
+
+        Args:
+            max_items: 注入的最大条数 (默认 3, 避免无限增长)。
+
+        Returns:
+            ``## Expression Patterns (learned)\\n<body1>\\n<body2>...`` 段;
+            无 expression growth 时返回空字符串 (调用方不注入)。
+        """
+        try:
+            from mortis.expression.distill import is_expression_growth
+            from mortis.growth.model import Dimension
+            from mortis.growth.frontmatter import FrontmatterError
+
+            paths = self.vault.list_growths(dimension=Dimension.TONE)
+            expr_growths = []
+            for rel in paths:
+                try:
+                    g = self.vault.read_growth(rel)
+                except (FileNotFoundError, FrontmatterError):
+                    continue
+                if not is_expression_growth(g.id):
+                    continue
+                if g.body and g.body.strip():
+                    expr_growths.append(g)
+            if not expr_growths:
+                return ""
+            # 按 id (含日期) 降序 — 最新 dream 产出的模式在前
+            expr_growths.sort(key=lambda g: g.id, reverse=True)
+            bodies = [g.body.strip() for g in expr_growths[:max_items]]
+            if not bodies:
+                return ""
+            return "## Expression Patterns (learned)\n" + "\n".join(bodies)
+        except Exception:
+            return ""
 
     # ----- steiner unease 注入 (issue #57) -----
 
@@ -134,10 +190,13 @@ class RuntimeContext:
         - system[0]: seed tone
         - system[1] (可选): unease 潜台词 — steiner 隐藏层 (issue #57)
         - system[2] (可选): growth 摘要 — 在 tone 之后, step output 之前
+        - system[3] (可选): expression patterns — dream 提炼的表达模式 (issue #94)
         - assistant: 每条 Thread step 的 output（按顺序）
 
         issue #57: unease 注入在 tone 之后、growth 之前（steiner 隐藏层）。
         issue #59: growth 检索现在根据当前任务动态进行。
+        issue #94: expression patterns 注入在 growth 之后, step output 之前 —
+            让 Mortis 回复风格随用户偏好演化。
         """
         from mortis.provider import Message
         msgs: list[Message] = [
@@ -152,6 +211,10 @@ class RuntimeContext:
         growth_prompt = self.growth_context_for_task(task_context)
         if growth_prompt:
             msgs.append(Message(role="system", content=growth_prompt))
+        # issue #94: 注入 expression patterns (learned) 段
+        expr_prompt = self.expression_patterns_prompt()
+        if expr_prompt:
+            msgs.append(Message(role="system", content=expr_prompt))
         for step in self.thread.steps:
             msgs.append(Message(role="assistant", content=step.output))
         return msgs

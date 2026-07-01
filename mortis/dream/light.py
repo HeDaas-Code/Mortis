@@ -37,7 +37,7 @@ from mortis.dream.phases import DreamLevel, DreamPhase
 from mortis.dream.pipeline import DreamPipeline, DreamResult, PhaseTrace
 from mortis.dream.recall import emotion_weighted_sample
 from mortis.growth.model import Dimension, Growth
-from mortis.memory import Session
+from mortis.memory import Session, Thread
 from mortis.provider.base import LLMProviderProtocol
 from mortis.reflect.emotion import score_emotion
 from mortis.vault.local import Vault
@@ -92,7 +92,7 @@ class LightDreamer(DreamPipeline):
         self.rng = rng if rng is not None else random.Random()
 
         # RECALL phase 的中间结果,后续 phase 复用
-        self._recalled: list[Session] = []
+        self._recalled: list[Session | Thread] = []
         self._recall_weights: list[tuple[float, float]] = []  # (v, a) per session
         self._candidate: Growth | None = None
 
@@ -111,12 +111,13 @@ class LightDreamer(DreamPipeline):
             )
 
         # 给每条 session 打 emotion(用 score_emotion 缓存)
-        items: list[tuple[Session, float, float]] = []
+        items: list[tuple[Session | Thread, float, float]] = []
         session_texts: list[str] = []
         for s in sessions:
-            path = str(s.session_id)  # cache key
+            # cache key — Thread 用 thread_id, Session 用 session_id
+            path = getattr(s, "thread_id", None) or getattr(s, "session_id", "")
             text = self._summarize_session(s)
-            v, a = score_emotion(self.provider, path, text)
+            v, a = score_emotion(self.provider, str(path), text)
             items.append((s, v, a))
             session_texts.append(text)
 
@@ -144,13 +145,18 @@ class LightDreamer(DreamPipeline):
             },
         )
 
-    def _load_recent_sessions(self) -> list[Session]:
-        """扫描 vault.mortis-journal/sessions/,返回最近 N 天的 Session。"""
+    def _load_recent_sessions(self) -> list[Session | Thread]:
+        """扫描 vault.mortis-journal/sessions/,返回最近 N 天的 Session/Thread。
+
+        issue #92: ChatService 现在把对话写入 Thread 文件 (sessions/<date>/<thread_id>.json)。
+        Thread 含 task + steps (对话历史), 是 dream 真正能消化的素材。
+        老的 Session 文件 (无 thread_id/steps 字段) 仍向后兼容加载。
+        """
         journal_root = Path(self.vault.root) / "mortis-journal" / "sessions"
         if not journal_root.exists():
             return []
 
-        all_sessions: list[Session] = []
+        all_items: list[Session | Thread] = []
         # 按日期目录扫描(YYYY-MM-DD/)
         date_dirs: list[Path] = []
         for p in journal_root.iterdir():
@@ -164,12 +170,17 @@ class LightDreamer(DreamPipeline):
                 continue
             for json_file in d.glob("*.json"):
                 try:
-                    s = Session.load(d, json_file.stem)
-                    all_sessions.append(s)
+                    import json as _json
+                    data = _json.loads(json_file.read_text(encoding="utf-8"))
+                    # issue #92: Thread 文件含 thread_id + steps — 优先按 Thread 解析
+                    if isinstance(data, dict) and "thread_id" in data and "steps" in data:
+                        all_items.append(Thread.from_dict(data))
+                    else:
+                        all_items.append(Session.from_dict(data))
                 except (FileNotFoundError, KeyError, ValueError) as e:
                     _logger.warning("light dreamer: skip %s: %s", json_file, e)
 
-        return all_sessions
+        return all_items
 
     def _date_cutoff(self) -> str:
         """计算 N 天前的 YYYY-MM-DD(闭区间,含今天)。"""
@@ -179,14 +190,29 @@ class LightDreamer(DreamPipeline):
         return cutoff.isoformat()
 
     @staticmethod
-    def _summarize_session(s: Session) -> str:
-        """把 Session 拼成纯文本(喂 LLM 用)。"""
+    def _summarize_session(s: Session | Thread) -> str:
+        """把 Session/Thread 拼成纯文本(喂 LLM 用)。
+
+        - Thread: 含 task + steps (对话历史) — dream 真正能消化的素材 (issue #92)
+        - Session: 仅 session_id/threads/metadata — 老格式, 向后兼容
+        """
         parts: list[str] = []
-        parts.append(f"Session {s.session_id} @ {s.created_at}")
-        if s.threads:
-            parts.append(f"Threads: {', '.join(s.threads)}")
-        if s.metadata:
-            parts.append(f"Metadata: {s.metadata}")
+        if isinstance(s, Thread):
+            parts.append(f"Thread {s.thread_id} @ {s.created_at}")
+            if s.task:
+                parts.append(f"Task: {s.task}")
+            if s.status and s.status != "active":
+                parts.append(f"Status: {s.status}")
+            for step in s.steps:
+                parts.append(f"[{step.step_type}] {step.input}")
+                if step.output:
+                    parts.append(f"→ {step.output}")
+        else:
+            parts.append(f"Session {s.session_id} @ {s.created_at}")
+            if s.threads:
+                parts.append(f"Threads: {', '.join(s.threads)}")
+            if s.metadata:
+                parts.append(f"Metadata: {s.metadata}")
         return "\n".join(parts)
 
     # ===========================================================
@@ -235,7 +261,12 @@ class LightDreamer(DreamPipeline):
 
         dimension = infer_dimension(body)
         v, a = average_emotion(self._recall_weights)
-        source_sessions = [str(s.session_id) for s in self._recalled]
+        # issue #92: _recalled 可能是 Thread 也可能是 Session — Thread 用 thread_id,
+        # Session 用 session_id, 作为 source_sessions 标识 growth 来源
+        source_sessions = [
+            str(getattr(s, "thread_id", None) or getattr(s, "session_id", ""))
+            for s in self._recalled
+        ]
         candidate = make_candidate(
             body=body,
             dimension=dimension,
@@ -292,6 +323,67 @@ class LightDreamer(DreamPipeline):
                 "checked": len(existing),
                 "conflicts": len(conflicts),
                 "conflict_ids": [c.candidate_id for c in conflicts],
+            },
+        )
+
+    # ===========================================================
+    # EXPRESSION_DISTILL: 从对话统计提炼表达模式 → tone growth (issue #94)
+    # ===========================================================
+
+    def phase_expression_distill(self) -> PhaseTrace:
+        """从近期对话统计 (expression-stats) 提炼表达模式, 写 tone growth。
+
+        issue #94 第二步:
+        1. 读最近 N 天 expression-stats (由 ChatService 对话后写入)
+        2. 调 LLM 提炼表达模式描述 (基于用户说话风格)
+        3. 写 ``mortis-growth/tone/expression-<date>.md`` (confidence=0.3, LIGHT)
+
+        无统计 (无对话数据) → ok=True 跳过, 不阻断 dream。
+        LLM 产出空 body → ok=True 跳过。
+        """
+        from mortis.expression.distill import (
+            DEFAULT_DISTILL_DAYS,
+            distill_expression_patterns,
+            expression_growth_id,
+        )
+        from mortis.expression.stats import load_recent_stats
+
+        turns = load_recent_stats(self.vault, days=DEFAULT_DISTILL_DAYS)
+        if not turns:
+            return PhaseTrace(
+                phase=DreamPhase.EXPRESSION_DISTILL.value,
+                ok=True,
+                detail={"reason": "no_stats", "loaded": 0},
+            )
+
+        result = distill_expression_patterns(self.provider, turns)
+        body = result.get("body", "").strip()
+        if not body:
+            return PhaseTrace(
+                phase=DreamPhase.EXPRESSION_DISTILL.value,
+                ok=True,
+                detail={"reason": "empty_body", "turn_count": result.get("turn_count", 0)},
+            )
+
+        # 构造 tone growth (id=expression-<date>, 同天覆盖取最新模式)
+        growth_id = expression_growth_id()
+        candidate = make_candidate(
+            body=body,
+            dimension=Dimension.TONE,
+            source_sessions=[],
+            valence=0.0,
+            arousal=0.3,
+            id=growth_id,
+        )
+        self.vault.write_growth(candidate)
+        return PhaseTrace(
+            phase=DreamPhase.EXPRESSION_DISTILL.value,
+            ok=True,
+            detail={
+                "growth_id": growth_id,
+                "dimension": Dimension.TONE.value,
+                "turn_count": result.get("turn_count", 0),
+                "body_len": len(body),
             },
         )
 

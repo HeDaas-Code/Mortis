@@ -259,7 +259,10 @@ class TestDoDream:
     """_do_dream — light 执行 + 异常兜底。"""
 
     def test_do_dream_light_with_sessions(self, vault_dir: Path) -> None:
-        """有 session → light dream 跑完 4 phase → 写 growth 候选。"""
+        """有 session → light dream 跑完 5 phase → 写 growth 候选。
+
+        issue #94: Light 追加 EXPRESSION_DISTILL phase (无 stats 时跳过)。
+        """
         _make_vault_with_sessions(vault_dir, n=2)
         daemon = _make_daemon(vault_dir)
         # 注入有 JSON 响应的 MockProvider:

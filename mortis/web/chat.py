@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator
 
+from mortis.memory import StepRecord, Thread
 from mortis.provider import Message, StreamChunk
 from mortis.runtime import MasterRuntime
 
@@ -64,6 +65,9 @@ class Conversation:
     updated_at: str = field(default_factory=lambda: datetime.now(tz=timezone.utc).isoformat())
     messages: list[ChatMessage] = field(default_factory=list)
     title: str = ""
+    # issue #92: 对话→Session 管道 — 对话绑定的 thread_id (写入 sessions/<date>/<thread_id>.json)
+    # 首次 send() 时由 master.create_thread() 创建, 后续 send() 复用同一 thread。
+    thread_id: str | None = None
 
     def add_user(self, content: str) -> ChatMessage:
         msg = ChatMessage(role="user", content=content)
@@ -85,6 +89,7 @@ class Conversation:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "title": self.title,
+            "thread_id": self.thread_id,
             "messages": [
                 {"role": m.role, "content": m.content, "timestamp": m.timestamp}
                 for m in self.messages
@@ -101,6 +106,7 @@ class Conversation:
             updated_at=data.get("updated_at", ""),
             title=data.get("title", ""),
             messages=msgs,
+            thread_id=data.get("thread_id"),
         )
 
 
@@ -230,6 +236,9 @@ class ChatService:
 
         conv.add_assistant(reply.content)
         self._save_conversation(conv)
+        # issue #92: 对话→Session 管道 — 把这轮 chat 写入 thread (sessions/<date>/<thread_id>.json)
+        # dream pipeline 读 sessions/ 目录, 没 thread 文件 → 永远空 → growth 不增长。
+        self._record_chat_step(conv, user_message, reply.content)
 
         return ChatResponse(
             conversation_id=conv.conversation_id,
@@ -267,6 +276,8 @@ class ChatService:
 
         conv.add_assistant(full_content)
         self._save_conversation(conv)
+        # issue #92: 流式对话也写入 thread, 与 send() 对齐
+        self._record_chat_step(conv, user_message, full_content)
 
     # ----- 消息构造 -----
 
@@ -276,7 +287,11 @@ class ChatService:
         - system[0]: seed tone (主人格语气)
         - system[1] (可选): unease 潜台词 (steiner 隐藏层)
         - system[2] (可选): growth 摘要 (相关 growth 上下文)
+        - system[3] (可选): expression patterns (learned) — dream 提炼的表达模式 (issue #94)
         - user/assistant: 对话历史
+
+        issue #94: 与 RuntimeContext.messages_for_provider 注入顺序对齐,
+        让对话也享受 expression patterns 注入。
         """
         from mortis.memory import Thread
         # 借用 RuntimeContext 的注入逻辑 (tone / unease / growth)
@@ -304,6 +319,10 @@ class ChatService:
         growth_prompt = ctx.growth_context_for_task(last_user)
         if growth_prompt:
             msgs.append(Message(role="system", content=growth_prompt))
+        # issue #94: expression patterns (learned) 段
+        expr_prompt = ctx.expression_patterns_prompt()
+        if expr_prompt:
+            msgs.append(Message(role="system", content=expr_prompt))
 
         # 对话历史 (provider 需要看到完整历史)
         for m in conv.messages:
@@ -317,6 +336,100 @@ class ChatService:
                 conv = self.create_conversation()
             return conv
         return self.create_conversation()
+
+    # ----- issue #92: 对话→Session 管道 -----
+
+    def _record_chat_step(
+        self,
+        conv: Conversation,
+        user_message: str,
+        assistant_reply: str,
+    ) -> None:
+        """把这轮 user→assistant 对话作为 step 写入 thread 文件。
+
+        thread 文件路径: ``vault/mortis-journal/sessions/<date>/<thread_id>.json`` —
+        与 dream pipeline 的 ``_load_recent_sessions`` 读的目录一致。
+
+        首次调用为对话创建 thread (task=首条消息前 50 字); 后续调用复用同一 thread,
+        每轮对话追加一个 ``step_type="chat"`` 的 StepRecord。
+        静默失败 — thread 写入异常不应阻断主对话流程。
+
+        issue #94: thread 写入后追加 ``record_turn_stats`` — 把这轮对话双侧
+        文本统计写入 ``mortis-journal/expression-stats/<date>.json``,
+        供 dream EXPRESSION_DISTILL phase 读取提炼表达模式。
+        """
+        try:
+            thread = self._get_or_create_thread(conv, user_message)
+            if thread is None:
+                return
+            step_id = f"step-chat-{len(thread.steps) + 1:03d}"
+            step = StepRecord(
+                step_id=step_id,
+                step_type="chat",
+                input=user_message,
+                output=assistant_reply,
+                tool_calls=[],
+            )
+            thread.add_step(step)
+            thread.save(self._thread_session_dir())
+        except Exception as e:
+            _logger.warning(
+                "record chat step to thread failed (conv=%s): %s",
+                conv.conversation_id, e,
+            )
+        # issue #94: 对话后触发表达统计写入 (静默失败, 不阻断主流程)
+        # 放在独立 try — thread 写入失败不影响 stats 写入, 反之亦然
+        try:
+            from mortis.expression.stats import record_turn_stats
+            record_turn_stats(self.master.vault, user_message, assistant_reply)
+        except Exception as e:
+            _logger.warning(
+                "record expression stats failed (conv=%s): %s",
+                conv.conversation_id, e,
+            )
+
+    def _get_or_create_thread(
+        self,
+        conv: Conversation,
+        user_message: str,
+    ) -> Thread | None:
+        """获取或新建对话绑定的 thread。
+
+        - conv.thread_id 已存在 → 复用 (内存缓存或磁盘加载)
+        - 否则 → ``master.create_thread(task=首条消息前 50 字)`` 新建,
+          并把 thread_id 回填到 conv, 持久化 conv 让后续 send() 能复用
+        """
+        if conv.thread_id:
+            thread = self.master.get_thread(conv.thread_id)
+            if thread is not None:
+                return thread
+            # 内存里没了 (新进程) → 从磁盘 load; 失败则重建
+            try:
+                thread = Thread.load(self._thread_session_dir(), conv.thread_id)
+                return thread
+            except FileNotFoundError:
+                _logger.warning(
+                    "thread %s not on disk, recreating for conv %s",
+                    conv.thread_id, conv.conversation_id,
+                )
+        # 新建 thread: task 用首条用户消息前 50 字 (与 issue 文档对齐)
+        task = f"对话: {user_message[:50]}"
+        thread = self.master.create_thread(task=task)
+        conv.thread_id = thread.thread_id
+        # 回填 thread_id 后立即持久化 conv, 防止下次 send() 重复创建 thread
+        self._save_conversation(conv)
+        return thread
+
+    def _thread_session_dir(self) -> Path:
+        """thread 文件目录 — 与 master._session_dir() 同源。
+
+        ``vault/mortis-journal/sessions/<YYYY-MM-DD>/`` — 按 session.created_at 取日期。
+        dream pipeline 扫这个目录读 thread/session 文件。
+        """
+        date = self.master.session.created_at[:10]
+        d = self.master.vault.root / "mortis-journal" / "sessions" / date
+        d.mkdir(parents=True, exist_ok=True)
+        return d
 
     # ----- 持久化 -----
 

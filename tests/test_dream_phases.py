@@ -12,18 +12,20 @@ from mortis.dream.phases import (
 class TestDreamPhase:
     """DreamPhase 枚举 + 顺序。"""
 
-    def test_all_seven_phases_exist(self):
+    def test_all_phases_exist(self):
+        # issue #94: 追加 expression_distill (8 phase)
         assert {p.value for p in DreamPhase} == {
             "recall", "associate", "simulate", "crystallize",
-            "reconcile", "erode", "seed_check",
+            "reconcile", "erode", "seed_check", "expression_distill",
         }
 
     def test_phase_order_matches_rfc(self):
         # RFC §四: RECALL → ASSOCIATE → SIMULATE → CRYSTALLIZE → RECONCILE → ERODE → SEED_CHECK
+        # issue #94: 追加 EXPRESSION_DISTILL (表达方式学习, Light level 专属)
         order = [p.value for p in DreamPhase]
         assert order == [
             "recall", "associate", "simulate", "crystallize",
-            "reconcile", "erode", "seed_check",
+            "reconcile", "erode", "seed_check", "expression_distill",
         ]
 
 
@@ -35,10 +37,11 @@ class TestDreamLevel:
 class TestPhasesByLevel:
     """level → phase 顺序映射。"""
 
-    def test_light_runs_four_phases(self):
+    def test_light_runs_five_phases(self):
+        # issue #94: Light 追加 EXPRESSION_DISTILL (5 phase)
         phases = PHASES_BY_LEVEL[DreamLevel.LIGHT]
         assert [p.value for p in phases] == [
-            "recall", "associate", "crystallize", "reconcile",
+            "recall", "associate", "crystallize", "reconcile", "expression_distill",
         ]
 
     def test_medium_runs_five_phases(self):
